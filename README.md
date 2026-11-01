@@ -6,7 +6,7 @@ Multi-tenant web app for business users to create **Purchase requisitions, Purch
 |---|---|
 | Frontend | React 18 + TypeScript + Vite, Fluent UI v9, MSAL.js (auth code + PKCE), React Query, zustand, react-i18next, zod |
 | Backend | ASP.NET Core 8 Web API, Microsoft.Identity.Web, EF Core 8 (PostgreSQL; SQL Server via provider switch) |
-| Secrets | env / user-secrets locally, Azure Key Vault in production; tenant D365 client secrets encrypted with ASP.NET Data Protection |
+| Secrets | env / user-secrets locally, host environment variables in production; tenant D365 client secrets encrypted with ASP.NET Data Protection |
 | Tests | xUnit (+ SQLite in-memory, WebApplicationFactory), Vitest + React Testing Library |
 
 ## Build status
@@ -98,9 +98,15 @@ In the **customer's** Entra tenant:
 
 Entra admin center → Users → you → copy **Object ID**; Overview → copy **Tenant ID**. Put them in `SUPERADMIN_OBJECT_ID` / `SUPERADMIN_ENTRA_TENANT_ID`.
 
-## Publish to Azure
+## Hosting (production)
 
-Recommended hosting, source control and the one-time setup are in **[docs/deployment.md](docs/deployment.md)**: Azure Container Apps + PostgreSQL Flexible Server + Key Vault, deployed from a private GitHub repo by GitHub Actions (`.github/workflows`), infrastructure in `infra/main.bicep`.
+| Part | Host | Notes |
+|---|---|---|
+| Web (React) | **Vercel** — project root `frontend/` | `frontend/vercel.json` proxies `/api/*` to the API, so the browser stays same-origin (no CORS). |
+| API (.NET 8) | **Render** — Docker web service from `backend/Dockerfile`, Frankfurt | Auto-deploys on push to `main`; applies EF migrations on start. |
+| Database | **Neon** Postgres 17 — project `d365-portal`, database `d365portal`, Frankfurt | Connection string only in Render's environment variables. |
+
+GitHub Actions (`.github/workflows/ci.yml`) builds and tests backend + frontend on every push.
 
 ## Run locally
 
