@@ -63,6 +63,16 @@ public class D365UnitTests
     }
 
     [Fact]
+    public void FO_inner_error_infolog_is_surfaced_instead_of_the_generic_message()
+    {
+        var body = """
+        {"error":{"code":"","message":"An error has occurred.","innererror":{"message":"Write failed for table row of type 'PurchReqTableEntity'. Infolog: Error: Preparer 54134 is not valid.","type":"AxODataWriteException","stacktrace":"   at Foo.Bar()","internalexception":{"message":"Preparer 54134 is not valid.","stacktrace":"x"}}}}
+        """;
+        var message = D365ConnectionTester.DescribeHttpError(HttpStatusCode.BadRequest, body);
+        message.Should().Contain("Preparer 54134 is not valid").And.NotContain("An error has occurred").And.NotContain("Foo.Bar");
+    }
+
+    [Fact]
     public void Connection_settings_never_print_the_secret()
     {
         var s = new D365ConnectionSettings(Guid.NewGuid(), "https://x.operations.dynamics.com", "t", "c", "super-secret");

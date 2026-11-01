@@ -145,14 +145,30 @@ public sealed class D365ConnectionTester(
     private static string? TryReadODataMessage(string body)
     {
         if (string.IsNullOrWhiteSpace(body)) return null;
-        static string Clip(string t) => t.Length > 300 ? t[..300] + "…" : t;
+        static string Clip(string t, int max = 300) => t.Length > max ? t[..max] + "…" : t;
         try
         {
             using var doc = JsonDocument.Parse(body);
             var root = doc.RootElement;
-            if (root.TryGetProperty("error", out var err) &&
-                err.TryGetProperty("message", out var msg) && msg.ValueKind == JsonValueKind.String)
-                return Clip(msg.GetString() ?? string.Empty);
+            if (root.TryGetProperty("error", out var err))
+            {
+                // F&O puts the useful text (Infolog) in innererror / internalexception; the top
+                // message is often just "An error has occurred.". Collect them, skip stack traces.
+                var parts = new List<string>();
+                void Collect(JsonElement e, int depth)
+                {
+                    if (depth > 6 || e.ValueKind != JsonValueKind.Object) return;
+                    if (e.TryGetProperty("message", out var m) && m.ValueKind == JsonValueKind.String &&
+                        m.GetString() is { Length: > 0 } text && !parts.Contains(text.Trim()))
+                        parts.Add(text.Trim());
+                    foreach (var child in new[] { "innererror", "internalexception" })
+                        if (e.TryGetProperty(child, out var c)) Collect(c, depth + 1);
+                }
+                Collect(err, 0);
+                var useful = parts.Where(p => !p.Equals("An error has occurred.", StringComparison.OrdinalIgnoreCase)).ToList();
+                var chosen = useful.Count > 0 ? useful : parts;
+                if (chosen.Count > 0) return Clip(string.Join(" | ", chosen), 1500);
+            }
             if (root.TryGetProperty("Message", out var m2) && m2.ValueKind == JsonValueKind.String)
                 return Clip(m2.GetString() ?? string.Empty);
         }
