@@ -60,6 +60,9 @@ public static class DependencyInjection
         services.AddSingleton<D365ConnectionTester>();
         services.AddSingleton<ID365ConnectionTester>(sp => sp.GetRequiredService<D365ConnectionTester>());
         services.AddSingleton<ID365CompanyDirectory>(sp => sp.GetRequiredService<D365ConnectionTester>());
+        services.AddScoped<ID365SettingsProvider, D365SettingsProvider>();
+        services.AddScoped<ID365ODataClient, D365ODataClient>();
+        services.AddScoped<LookupService>();
 
         return services;
     }

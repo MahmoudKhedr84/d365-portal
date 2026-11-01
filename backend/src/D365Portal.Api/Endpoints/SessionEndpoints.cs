@@ -4,6 +4,7 @@ using D365Portal.Core.Auditing;
 using D365Portal.Core.Entities;
 using D365Portal.Core.Identity;
 using D365Portal.Core.Tenancy;
+using Microsoft.EntityFrameworkCore;
 
 namespace D365Portal.Api.Endpoints;
 
@@ -35,6 +36,8 @@ public sealed record CurrentTenantResponse(
     string? DefaultCompany,
     string? CurrentCompany,
     IReadOnlyList<string> Companies);
+
+public sealed record SwitchCompanyRequest(string Company);
 
 public static class SessionEndpoints
 {
@@ -83,16 +86,50 @@ public static class SessionEndpoints
             .WithName("GetMe")
             .WithSummary("The signed-in account and the tenants it can use.");
 
-        api.MapGet("/tenant/current", (HttpContext http) =>
+        api.MapGet("/tenant/current", (HttpContext http, ITenantContext tenant) =>
             {
                 var m = http.GetMembership()!; // guaranteed by TenantUser policy + middleware
                 return Results.Ok(new CurrentTenantResponse(
                     m.TenantId, m.TenantName, m.TenantSlug, m.UserId, m.Email, m.DisplayName,
-                    m.Role.ToString(), m.DefaultCompany, m.CurrentCompany, m.Companies));
+                    m.Role.ToString(), m.DefaultCompany, tenant.Company, m.Companies));
             })
             .RequireAuthorization(Policies.TenantUser)
             .WithName("GetCurrentTenant")
             .WithSummary("The tenant selected by X-Tenant-Id and the caller's role/companies in it.");
+
+        // Switch the working company inside the selected tenant. Only companies the user has access to.
+        api.MapPut("/session/company", async (SwitchCompanyRequest req, HttpContext http, ITenantContext tenant,
+                Infrastructure.Data.AppDbContext db, IAuditLogger audit, CancellationToken ct) =>
+            {
+                var m = http.GetMembership()!;
+                var company = req.Company?.Trim().ToUpperInvariant() ?? string.Empty;
+                if (!m.Companies.Contains(company, StringComparer.OrdinalIgnoreCase))
+                    return Problems.Result(403, "company_access_denied", $"You don't have access to company {company} in this tenant.");
+
+                // Query filters keep this inside the caller's tenant.
+                await db.AppUsers.Where(u => u.Id == m.UserId)
+                    .ExecuteUpdateAsync(set => set.SetProperty(u => u.CurrentCompany, company), ct);
+                await audit.WriteAsync(new AuditLog
+                {
+                    TenantId = m.TenantId,
+                    UserId = m.UserId,
+                    UserEmail = m.Email,
+                    Company = company,
+                    Entity = "Session",
+                    Action = "SwitchCompany",
+                    RequestSummary = $"from={tenant.Company}; to={company}",
+                    Success = true,
+                    StatusCode = 200,
+                    CorrelationId = http.TraceIdentifier,
+                }, ct);
+
+                return Results.Ok(new CurrentTenantResponse(
+                    m.TenantId, m.TenantName, m.TenantSlug, m.UserId, m.Email, m.DisplayName,
+                    m.Role.ToString(), m.DefaultCompany, company, m.Companies));
+            })
+            .RequireAuthorization(Policies.TenantUser)
+            .WithName("SwitchCompany")
+            .WithSummary("Set the user's working company (dataAreaId) within the selected tenant.");
 
         return app;
     }

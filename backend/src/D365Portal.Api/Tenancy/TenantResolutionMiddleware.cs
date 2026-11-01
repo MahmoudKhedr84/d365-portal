@@ -17,6 +17,7 @@ namespace D365Portal.Api.Tenancy;
 public sealed class TenantResolutionMiddleware(RequestDelegate next)
 {
     public const string TenantHeader = "X-Tenant-Id";
+    public const string CompanyHeader = "X-Company";
     public const string MembershipItemKey = "D365Portal.Membership";
 
     public async Task InvokeAsync(
@@ -53,6 +54,26 @@ public sealed class TenantResolutionMiddleware(RequestDelegate next)
 
             tenantContext.SetTenant(membership.TenantId, membership.UserId, membership.Email, membership.Role);
             http.Items[MembershipItemKey] = membership;
+
+            // Company switching happens inside the tenant only, and only among the user's allowed companies.
+            if (http.Request.Headers.TryGetValue(CompanyHeader, out var rawCompany) && !string.IsNullOrWhiteSpace(rawCompany))
+            {
+                var company = rawCompany.ToString().Trim().ToUpperInvariant();
+                if (!membership.Companies.Contains(company, StringComparer.OrdinalIgnoreCase))
+                {
+                    await Problems.Write(http, StatusCodes.Status403Forbidden, "company_access_denied",
+                        $"You don't have access to company {company} in this tenant.");
+                    return;
+                }
+                tenantContext.SetCompany(company);
+            }
+            else
+            {
+                var fallback = membership.CurrentCompany;
+                tenantContext.SetCompany(fallback is not null && membership.Companies.Contains(fallback, StringComparer.OrdinalIgnoreCase)
+                    ? fallback
+                    : membership.Companies.FirstOrDefault());
+            }
         }
 
         await next(http);

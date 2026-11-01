@@ -28,6 +28,7 @@ public sealed class AdminService(
     ID365CompanyDirectory companies,
     IAuditLogger audit,
     IOptions<D365Options> d365Options,
+    LookupService lookups,
     TimeProvider clock,
     IHttpContextAccessor http)
 {
@@ -85,6 +86,31 @@ public sealed class AdminService(
         await db.SaveChangesAsync(ct);
         if (changes.Count > 0) await Audit(tenantId, "Tenant", "Update", string.Join(", ", changes), ct);
         return await GetTenantAsync(tenantId, ct);
+    }
+
+    /// <summary>
+    /// Permanently deletes a tenant with its D365 connection, users and company access.
+    /// The caller must repeat the tenant's slug as confirmation. Audit history is kept.
+    /// </summary>
+    public async Task DeleteTenantAsync(Guid tenantId, string? confirmSlug, CancellationToken ct)
+    {
+        var tenant = await LoadTenant(tenantId, ct, tracking: false);
+        if (!string.Equals(confirmSlug?.Trim(), tenant.Slug, StringComparison.Ordinal))
+            throw new AdminException(400, "confirmation_mismatch", $"Type the tenant slug '{tenant.Slug}' to confirm deletion.");
+
+        var userCount = await db.AppUsers.IgnoreQueryFilters().CountAsync(u => u.TenantId == tenantId, ct);
+        // Execution strategy: SQL Server's retrying strategy requires user transactions to run inside it.
+        await db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+        {
+            await using var tx = await db.Database.BeginTransactionAsync(ct);
+            await db.UserCompanyAccess.IgnoreQueryFilters().Where(x => x.TenantId == tenantId).ExecuteDeleteAsync(ct);
+            await db.AppUsers.IgnoreQueryFilters().Where(x => x.TenantId == tenantId).ExecuteDeleteAsync(ct);
+            await db.D365Connections.IgnoreQueryFilters().Where(x => x.TenantId == tenantId).ExecuteDeleteAsync(ct);
+            await db.Tenants.IgnoreQueryFilters().Where(x => x.Id == tenantId).ExecuteDeleteAsync(ct);
+            await tx.CommitAsync(ct);
+        });
+        tokens.Invalidate(tenantId);
+        await Audit(tenantId, "Tenant", "Delete", $"slug={tenant.Slug}; name={tenant.Name}; users={userCount}", ct);
     }
 
     // ======================= D365 connection =======================
@@ -181,6 +207,17 @@ public sealed class AdminService(
             ?? throw new AdminException(409, "connection_invalid", error!);
         var list = await companies.GetCompaniesAsync(settings, ct);
         return list.Select(c => new CompanyDto(c.Id, c.Name)).ToList();
+    }
+
+    /// <summary>Probes every lookup and transaction entity the portal uses and reports the resolved names.</summary>
+    public async Task<IReadOnlyList<EntityCheckRow>> CheckEntitiesAsync(Guid tenantId, string? company, CancellationToken ct)
+    {
+        var connection = await db.D365Connections.IgnoreQueryFilters().AsNoTracking()
+            .SingleOrDefaultAsync(x => x.TenantId == tenantId, ct)
+            ?? throw new AdminException(409, "no_connection", "Set up the D365 connection first.");
+        var settings = TryBuildSettings(connection, out var error)
+            ?? throw new AdminException(409, "connection_invalid", error!);
+        return await lookups.CheckAsync(settings, company, ct);
     }
 
     // ======================= Users =======================

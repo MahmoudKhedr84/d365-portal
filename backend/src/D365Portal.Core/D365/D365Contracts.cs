@@ -43,3 +43,23 @@ public interface ID365CompanyDirectory
     /// <summary>All legal entities (DataAreas) in the environment.</summary>
     Task<IReadOnlyList<D365Company>> GetCompaniesAsync(D365ConnectionSettings settings, CancellationToken ct);
 }
+
+/// <summary>Loads and decrypts a tenant's D365 connection. Callers must have authorized access to the tenant.</summary>
+public interface ID365SettingsProvider
+{
+    /// <exception cref="D365Exception">Codes no_connection / connection_inactive / connection_invalid.</exception>
+    Task<D365ConnectionSettings> GetAsync(Guid tenantId, CancellationToken ct);
+}
+
+public static class D365ErrorCodes
+{
+    public const string NoConnection = "no_connection";
+    public const string ConnectionInactive = "connection_inactive";
+    public const string ConnectionInvalid = "connection_invalid";
+    public const string NoCompany = "no_company";
+    public const string Validation = "d365_validation";
+
+    /// <summary>Configuration problems on our side (409), as opposed to D365 being unreachable/failing (502).</summary>
+    public static bool IsConfiguration(string? code) =>
+        code is NoConnection or ConnectionInactive or ConnectionInvalid or NoCompany;
+}

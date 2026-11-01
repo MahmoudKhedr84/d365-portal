@@ -147,7 +147,11 @@ app.UseExceptionHandler(errorApp => errorApp.Run(async http =>
     if (error is D365Exception d365)
     {
         logger.LogWarning("D365 call failed: {Code} {Status}", d365.Code, d365.StatusCode);
-        await Problems.Write(http, 502, d365.Code ?? "d365_error", d365.Message);
+        var status = D365ErrorCodes.IsConfiguration(d365.Code) ? 409
+            : d365.Code == D365ErrorCodes.Validation ? 422
+            : d365.Code == "d365_entity_not_found" ? 404
+            : 502;
+        await Problems.Write(http, status, d365.Code ?? "d365_error", d365.Message);
         return;
     }
     if (error is BadHttpRequestException)
@@ -191,6 +195,7 @@ app.MapGet("/health/db", async (AppDbContext db, CancellationToken ct) =>
 
 app.MapSessionEndpoints();
 app.MapAdminEndpoints();
+app.MapLookupEndpoints();
 
 app.Run();
 

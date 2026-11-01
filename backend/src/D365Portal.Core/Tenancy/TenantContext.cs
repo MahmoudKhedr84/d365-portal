@@ -22,6 +22,13 @@ public interface ITenantContext
     /// </summary>
     bool IsPlatformScope { get; }
 
+    /// <summary>
+    /// The D365 company (dataAreaId, upper-case) this request works in: the X-Company header when the
+    /// user is allowed that company, otherwise the user's current/default company. Null when the
+    /// user has no company access in the tenant.
+    /// </summary>
+    string? Company { get; }
+
     bool IsResolved => TenantId.HasValue && UserId.HasValue;
 }
 
@@ -33,6 +40,10 @@ public sealed class TenantContext : ITenantContext
     public UserRole? Role { get; private set; }
     public bool IsSuperAdmin { get; private set; }
     public bool IsPlatformScope { get; private set; }
+    public string? Company { get; private set; }
+
+    public void SetCompany(string? company) =>
+        Company = string.IsNullOrWhiteSpace(company) ? null : company.Trim().ToUpperInvariant();
 
     public void SetSuperAdmin(bool isSuperAdmin) => IsSuperAdmin = isSuperAdmin;
 

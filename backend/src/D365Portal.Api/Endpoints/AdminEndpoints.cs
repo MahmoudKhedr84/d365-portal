@@ -45,6 +45,17 @@ public static class AdminEndpoints
                 s.UpdateTenantAsync(tenantId, req, ct))
             .AddEndpointFilter<ValidationFilter<UpdateTenantRequest>>();
 
+        platform.MapDelete("/tenants/{tenantId:guid}", async (Guid tenantId, string? confirm, AdminService s, CancellationToken ct) =>
+            {
+                await s.DeleteTenantAsync(tenantId, confirm, ct);
+                return Results.NoContent();
+            })
+            .WithSummary("Permanently delete a tenant (?confirm=<slug>). Users, company access and the D365 connection are removed; audit history is kept.");
+
+        platform.MapGet("/tenants/{tenantId:guid}/d365/entities", (Guid tenantId, AdminService s, CancellationToken ct) =>
+                s.CheckEntitiesAsync(tenantId, company: null, ct))
+            .WithSummary("Which standard D365 entities/fields exist in the tenant's environment.");
+
         platform.MapGet("/tenants/{tenantId:guid}/connection", async (Guid tenantId, AdminService s, CancellationToken ct) =>
             await s.GetConnectionAsync(tenantId, ct) is { } c ? Results.Ok(c) : Results.NoContent());
 
@@ -95,6 +106,10 @@ public static class AdminEndpoints
         admin.MapGet("/companies", (ITenantContext t, AdminService s, CancellationToken ct) =>
             s.GetCompaniesAsync(Tenant(t), ct))
             .WithSummary("Companies (DataAreas) read live from the tenant's D365 environment.");
+
+        admin.MapGet("/d365/entities", (ITenantContext t, AdminService s, CancellationToken ct) =>
+                s.CheckEntitiesAsync(Tenant(t), t.Company, ct))
+            .WithSummary("Which standard D365 entities/fields exist in this tenant's environment.");
 
         admin.MapGet("/users", (ITenantContext t, AdminService s, CancellationToken ct) => s.ListUsersAsync(Tenant(t), ct));
 
