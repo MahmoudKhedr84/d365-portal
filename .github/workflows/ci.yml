@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches-ignore: [main]   # main is built + tested by deploy.yml before release
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend build + tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - run: dotnet restore
+      - run: dotnet build --no-restore -c Release
+      - run: dotnet test --no-build -c Release --logger "trx;LogFileName=results.trx"
+      - name: EF model matches the migration
+        run: |
+          dotnet tool install --global dotnet-ef --version 8.0.11
+          dotnet ef migrations has-pending-model-changes \
+            --project src/D365Portal.Infrastructure --startup-project src/D365Portal.Api \
+            --context PostgresAppDbContext --no-build --configuration Release
+        env:
+          ConnectionStrings__Default: Host=localhost;Database=unused
+          AzureAd__ClientId: 00000000-0000-0000-0000-000000000001
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: backend-test-results
+          path: backend/tests/**/TestResults/*.trx
+
+  frontend:
+    name: Frontend typecheck + tests + build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  infra:
+    name: Bicep lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: az bicep build --file infra/main.bicep --stdout > /dev/null

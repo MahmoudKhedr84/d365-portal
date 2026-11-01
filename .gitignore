@@ -1,0 +1,22 @@
+# secrets
+.env
+.env.local
+*.pfx
+
+# .NET
+**/bin/
+**/obj/
+*.user
+.vs/
+TestResults/
+
+# Node
+node_modules/
+frontend/dist/
+coverage/
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json

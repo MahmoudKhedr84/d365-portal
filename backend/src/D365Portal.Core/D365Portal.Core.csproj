@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>D365Portal.Core</RootNamespace>
+  </PropertyGroup>
+</Project>

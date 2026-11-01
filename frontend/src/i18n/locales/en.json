@@ -1,0 +1,66 @@
+{
+  "app": {
+    "title": "D365 Portal",
+    "loading": "Loading…",
+    "retry": "Try again"
+  },
+  "signIn": {
+    "heading": "Sign in to continue",
+    "body": "Use your work Microsoft account to create purchase requisitions, purchase orders, cases and journals in Dynamics 365.",
+    "button": "Sign in with Microsoft"
+  },
+  "notAuthorized": {
+    "heading": "Not authorized",
+    "body": "Your account {{email}} is not set up in this portal. Contact your administrator to get access.",
+    "signOut": "Sign out and use another account"
+  },
+  "tenantPicker": {
+    "heading": "Choose an organization",
+    "body": "Your account has access to more than one organization.",
+    "role": "Role: {{role}}",
+    "open": "Open"
+  },
+  "config": {
+    "heading": "The app is not configured",
+    "body": "Set the following values and reload:"
+  },
+  "session": {
+    "failed": "We couldn't start your session."
+  },
+  "nav": {
+    "workspaces": "Workspaces",
+    "home": "Home",
+    "purchaseRequisitions": "Purchase requisitions",
+    "purchaseOrders": "Purchase orders",
+    "cases": "Cases",
+    "generalJournals": "General journals",
+    "administration": "Administration",
+    "users": "Users",
+    "d365Connection": "D365 connection",
+    "platform": "Platform",
+    "tenants": "Tenants",
+    "auditLog": "Audit log"
+  },
+  "topBar": {
+    "company": "Company",
+    "noCompany": "No company",
+    "switchTenant": "Switch organization",
+    "signOut": "Sign out",
+    "tenant": "Organization"
+  },
+  "home": {
+    "greeting": "Welcome, {{name}}",
+    "subtitle": "{{tenant}} · company {{company}}",
+    "subtitleNoCompany": "{{tenant}} · no company assigned yet",
+    "tileOpen": "Open"
+  },
+  "placeholder": {
+    "heading": "{{title}}",
+    "body": "This area is delivered in step {{step}} of the build plan."
+  },
+  "roles": {
+    "User": "User",
+    "TenantAdmin": "Tenant admin"
+  },
+  "notFound": "Page not found."
+}
