@@ -37,7 +37,8 @@ public sealed record PrLineDto(
     string? Site,
     string? Warehouse,
     DateOnly? RequestedDate,
-    string? Status);
+    string? Status,
+    string? Variant = null);
 
 public sealed record PrTotalDto(string Currency, decimal Amount);
 
@@ -65,12 +66,21 @@ public sealed record CreatePrLineRequest(
     string? Vendor,
     string? Site,
     string? Warehouse,
-    DateOnly? RequestedDate);
+    DateOnly? RequestedDate,
+    string? Configuration = null,
+    string? Size = null,
+    string? Color = null,
+    string? Style = null,
+    string? Version = null);
 
+/// <summary>
+/// The preparer is always the D365 worker linked to the integration user (D365 requires the
+/// "current worker"), so it is not sent. <see cref="Requester"/> optionally sets the requester on the lines.
+/// </summary>
 public sealed record CreatePrRequest(
     string Name,
     string? Purpose,
-    string Preparer,
+    string? Requester,
     DateOnly? RequestedDate,
     DateOnly? AccountingDate,
     string? Justification,
@@ -81,7 +91,7 @@ public sealed class CreatePrRequestValidator : AbstractValidator<CreatePrRequest
     public CreatePrRequestValidator()
     {
         RuleFor(x => x.Name).NotEmpty().WithMessage("Name is required.").MaximumLength(60);
-        RuleFor(x => x.Preparer).NotEmpty().WithMessage("Preparer (worker) is required.").MaximumLength(25);
+        RuleFor(x => x.Requester).MaximumLength(25);
         RuleFor(x => x.Purpose).Must(p => p is null or "Consumption" or "Replenishment")
             .WithMessage("Purpose must be Consumption or Replenishment.");
         RuleFor(x => x.Justification).MaximumLength(1000);
@@ -112,7 +122,8 @@ public sealed class PurchaseRequisitionService(
     ID365SettingsProvider settingsProvider,
     ID365ODataClient odata,
     ITenantContext tenant,
-    IAuditLogger audit)
+    IAuditLogger audit,
+    Infrastructure.D365.LookupService lookups)
 {
     public const string HeaderSet = "PurchaseRequisitionHeaders";
     public const string LineSet = "PurchaseRequisitionLines";
@@ -131,6 +142,7 @@ public sealed class PurchaseRequisitionService(
         "RequisitionNumber", "RequisitionLineNumber", "BuyingLegalEntityId", "ItemNumber", "ProcurementProductCategoryName",
         "ProductName", "LineDescription", "RequestedPurchaseQuantity", "PurchaseUnitSymbol", "PurchasePrice", "LineAmount",
         "CurrencyCode", "VendorAccountNumber", "ReceivingSiteId", "ReceivingWarehouseId", "RequestedDate", "LineStatus",
+        "ProductConfigurationId", "ProductSizeId", "ProductColorId", "ProductStyleId", "ProductVersionId",
     };
 
     public async Task<PrListDto> ListAsync(string? search, string? status, int top, int skip, CancellationToken ct)
@@ -176,11 +188,17 @@ public sealed class PurchaseRequisitionService(
         var company = tenant.Company
             ?? throw new D365Exception("Select a company first.", null, D365ErrorCodes.NoCompany);
 
+        // Fail fast with a clear message for items stopped for purchasing in this company.
+        var onHold = await lookups.GetPurchaseOnHoldAsync(s, company,
+            req.Lines.Select(l => l.ItemNumber ?? string.Empty), ct);
+        if (onHold.Count > 0)
+            throw new AdminException(422, "item_on_hold",
+                $"These items are on hold for purchasing in {company}: {string.Join(", ", onHold.OrderBy(x => x))}. Remove them or ask to release the hold.");
+
         var header = Compact(new Dictionary<string, object?>
         {
             ["RequisitionName"] = req.Name.Trim(),
             ["RequisitionPurpose"] = req.Purpose ?? "Consumption",
-            ["PreparerPersonnelNumber"] = req.Preparer.Trim(),
             ["DefaultRequestedDate"] = ToODataDate(req.RequestedDate),
             ["DefaultAccountingDate"] = ToODataDate(req.AccountingDate),
             ["DefaultBusinessJustificationDetails"] = Blank(req.Justification),
@@ -240,7 +258,12 @@ public sealed class PurchaseRequisitionService(
             ["ReceivingSiteId"] = Blank(l.Site),
             ["ReceivingWarehouseId"] = Blank(l.Warehouse),
             ["RequestedDate"] = ToODataDate(l.RequestedDate ?? req.RequestedDate),
-            ["RequisitionerPersonnelNumber"] = req.Preparer.Trim(),
+            ["RequisitionerPersonnelNumber"] = Blank(req.Requester),
+            ["ProductConfigurationId"] = isItem ? Blank(l.Configuration) : null,
+            ["ProductSizeId"] = isItem ? Blank(l.Size) : null,
+            ["ProductColorId"] = isItem ? Blank(l.Color) : null,
+            ["ProductStyleId"] = isItem ? Blank(l.Style) : null,
+            ["ProductVersionId"] = isItem ? Blank(l.Version) : null,
         });
     }
 
@@ -260,7 +283,8 @@ public sealed class PurchaseRequisitionService(
             Str(r, "ProcurementProductCategoryName"), Str(r, "ProductName"), Str(r, "LineDescription"),
             Num(r, "RequestedPurchaseQuantity"), Str(r, "PurchaseUnitSymbol"), Num(r, "PurchasePrice"), Num(r, "LineAmount"),
             Str(r, "CurrencyCode"), Str(r, "VendorAccountNumber"), Str(r, "ReceivingSiteId"), Str(r, "ReceivingWarehouseId"),
-            Date(r, "RequestedDate"), Str(r, "LineStatus"))).ToList();
+            Date(r, "RequestedDate"), Str(r, "LineStatus"),
+            JoinVariant(r))).ToList();
         var totals = lineDtos.GroupBy(l => l.Currency ?? string.Empty)
             .Select(g => new PrTotalDto(g.Key, g.Sum(l => l.LineAmount))).ToList();
 
@@ -269,6 +293,13 @@ public sealed class PurchaseRequisitionService(
             Str(h, "RequisitionPurpose"), Str(h, "PreparerPersonnelNumber"), Date(h, "DefaultRequestedDate"),
             Date(h, "DefaultAccountingDate"), Str(h, "DefaultBusinessJustificationDetails"), lineDtos, totals,
             DeepLink(s, tenant.Company, "PurchReqTableListPage"));
+    }
+
+    private static string? JoinVariant(JsonElement r)
+    {
+        var parts = new[] { "ProductConfigurationId", "ProductSizeId", "ProductColorId", "ProductStyleId", "ProductVersionId" }
+            .Select(f => Str(r, f)).Where(v => !string.IsNullOrWhiteSpace(v)).ToList();
+        return parts.Count == 0 ? null : string.Join(" / ", parts);
     }
 
     private Task<D365ConnectionSettings> Settings(CancellationToken ct) => settingsProvider.GetAsync(tenant.TenantId!.Value, ct);

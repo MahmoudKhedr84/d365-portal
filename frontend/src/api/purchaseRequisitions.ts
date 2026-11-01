@@ -36,6 +36,7 @@ export const prLineSchema = z.object({
   warehouse: z.string().nullable(),
   requestedDate: date,
   status: z.string().nullable(),
+  variant: z.string().nullable().optional(),
 });
 export type PrLine = z.infer<typeof prLineSchema>;
 
@@ -69,9 +70,22 @@ export const prLineFormSchema = z
     vendor: z.string().trim().optional(),
     site: z.string().trim().optional(),
     warehouse: z.string().trim().optional(),
+    /** True when the item is a product master: a variant (product dimensions) must be chosen. */
+    needsVariant: z.boolean().optional(),
+    variant: z.string().trim().optional(),
+    configuration: z.string().optional(),
+    size: z.string().optional(),
+    color: z.string().optional(),
+    style: z.string().optional(),
+    version: z.string().optional(),
+    onHold: z.boolean().optional(),
   })
   .superRefine((l, ctx) => {
     if (l.kind === 'item' && !l.itemNumber) ctx.addIssue({ code: 'custom', path: ['itemNumber'], message: 'Select an item.' });
+    if (l.kind === 'item' && l.onHold)
+      ctx.addIssue({ code: 'custom', path: ['itemNumber'], message: 'This item is on hold for purchasing in this company.' });
+    if (l.kind === 'item' && l.needsVariant && !l.variant)
+      ctx.addIssue({ code: 'custom', path: ['variant'], message: 'Select the variant (product dimensions).' });
     if (l.kind === 'category') {
       if (!l.procurementCategory) ctx.addIssue({ code: 'custom', path: ['procurementCategory'], message: 'Select a category.' });
       if (!l.description) ctx.addIssue({ code: 'custom', path: ['description'], message: 'Describe what you need.' });
@@ -86,7 +100,8 @@ export type PrLineForm = Omit<z.input<typeof prLineFormSchema>, 'quantity' | 'un
 export const prFormSchema = z.object({
   name: z.string().trim().min(1, 'Name is required.').max(60, 'At most 60 characters.'),
   purpose: z.enum(['Consumption', 'Replenishment']),
-  preparer: z.string().trim().min(1, 'Select the preparer (worker).'),
+  /** Optional requester on the lines; the preparer is always D365's integration worker. */
+  requester: z.string().trim().optional(),
   requestedDate: z.string().optional(),
   accountingDate: z.string().optional(),
   justification: z.string().max(1000).optional(),
@@ -112,7 +127,7 @@ export function toCreateBody(form: PrForm, lines: PrLineForm[]) {
   return {
     name: form.name.trim(),
     purpose: form.purpose,
-    preparer: form.preparer.trim(),
+    requester: blank(form.requester),
     requestedDate: blank(form.requestedDate),
     accountingDate: blank(form.accountingDate),
     justification: blank(form.justification),
@@ -128,6 +143,11 @@ export function toCreateBody(form: PrForm, lines: PrLineForm[]) {
       site: blank(l.site),
       warehouse: blank(l.warehouse),
       requestedDate: null,
+      configuration: l.kind === 'item' ? blank(l.configuration) : null,
+      size: l.kind === 'item' ? blank(l.size) : null,
+      color: l.kind === 'item' ? blank(l.color) : null,
+      style: l.kind === 'item' ? blank(l.style) : null,
+      version: l.kind === 'item' ? blank(l.version) : null,
     })),
   };
 }

@@ -69,7 +69,7 @@ describe('purchase requisition helpers', () => {
       { kind: 'category' as const, procurementCategory: 'Office', description: 'Pens', quantity: 3, unitPrice: '' },
     ];
     expect(estimateTotals(lines)).toEqual([{ currency: 'USD', amount: 21 }, { currency: '', amount: 0 }]);
-    const body = toCreateBody({ name: ' PR ', purpose: 'Consumption', preparer: '000123', requestedDate: '2026-11-15' }, lines);
+    const body = toCreateBody({ name: ' PR ', purpose: 'Consumption', requester: '000123', requestedDate: '2026-11-15' }, lines);
     expect(body.name).toBe('PR');
     expect(body.accountingDate).toBeNull();
     expect(body.lines[0]).toMatchObject({ itemNumber: 'A1', quantity: 2, unitPrice: 10.5, currency: 'usd' });
@@ -99,9 +99,14 @@ describe('purchase requisition pages', () => {
   });
 
   it('validates, then creates the requisition in D365 and opens it', async () => {
-    localStorage.setItem(`d365portal.preparer.${T1}`, '000123');
+    localStorage.setItem(`d365portal.requester.${T1}`, '000123');
     const calls = renderAt('/purchase-requisitions/new', (c) => {
-      if (c.path.startsWith('/lookups/products')) return [{ id: 'A0001', name: 'Printer paper', extra: { PurchaseUnitSymbol: 'box' } }];
+      if (c.path.startsWith('/lookups/products'))
+        return [
+          { id: 'A0001', name: 'Printer paper', extra: { PurchaseUnitSymbol: 'box', ProductSubType: 'ProductMaster', ProductDimensionGroupName: 'Style' } },
+          { id: 'A0002', name: 'Old toner', extra: { OnHold: 'Yes' } },
+        ];
+      if (c.path.startsWith('/lookups/productVariants')) return [{ id: 'A0001 : : : Classic', name: 'Paper classic', extra: { ProductStyleId: 'Classic' } }];
       if (c.path.startsWith('/lookups')) return [];
       if (c.path === '/purchase-requisitions' && c.method === 'POST') return detail;
       if (c.path.startsWith('/purchase-requisitions/')) return detail;
@@ -117,14 +122,22 @@ describe('purchase requisition pages', () => {
     const item = within(screen.getByRole('group', { name: 'Line 1' })).getByRole('combobox', { name: /Item/ });
     await userEvent.click(item);
     await userEvent.type(item, 'A0');
+    expect(await screen.findByRole('option', { name: /A0002.*On hold/ }, { timeout: 3000 })).toHaveAttribute('aria-disabled', 'true');
     await userEvent.click(await screen.findByRole('option', { name: /A0001/ }, { timeout: 3000 }));
+
+    // Product master → a variant is required.
+    await userEvent.click(screen.getByRole('button', { name: 'Create requisition' }));
+    expect(await screen.findByText('Select the variant (product dimensions).')).toBeInTheDocument();
+    const variant = within(screen.getByRole('group', { name: 'Line 1' })).getByRole('combobox', { name: /Variant/ });
+    await userEvent.click(variant);
+    await userEvent.click(await screen.findByRole('option', { name: /Classic/ }, { timeout: 3000 }));
 
     await userEvent.click(screen.getByRole('button', { name: 'Create requisition' }));
     await waitFor(() => expect(calls.some((c) => c.method === 'POST')).toBe(true));
     const post = calls.find((c) => c.method === 'POST')!;
     expect(post.body).toMatchObject({
-      name: 'Office supplies', preparer: '000123',
-      lines: [{ itemNumber: 'A0001', description: 'Printer paper', unit: 'box', quantity: 1 }],
+      name: 'Office supplies', requester: '000123',
+      lines: [{ itemNumber: 'A0001', description: 'Printer paper', unit: 'box', quantity: 1, style: 'Classic' }],
     });
     expect(await screen.findByRole('heading', { name: 'PR-000042' })).toBeInTheDocument();
   }, 20000);

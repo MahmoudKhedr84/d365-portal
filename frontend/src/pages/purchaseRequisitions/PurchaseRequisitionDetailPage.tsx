@@ -118,7 +118,10 @@ export function PurchaseRequisitionDetailPage() {
                 <TableRow key={l.lineNumber}>
                   <TableCell>{l.lineNumber}</TableCell>
                   <TableCell className={s.mono}>{l.buyingLegalEntity}</TableCell>
-                  <TableCell className={s.mono}>{l.itemNumber ?? l.procurementCategory}</TableCell>
+                  <TableCell className={s.mono}>
+                    {l.itemNumber ?? l.procurementCategory}
+                    {l.variant && <div>{l.variant}</div>}
+                  </TableCell>
                   <TableCell>{l.description ?? l.productName}</TableCell>
                   <TableCell className={s.num}>{l.quantity}</TableCell>
                   <TableCell>{l.unit}</TableCell>

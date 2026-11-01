@@ -9,6 +9,7 @@ import { useSessionStore } from '@/state/sessionStore';
 const useStyles = makeStyles({
   id: { fontFamily: tokens.fontFamilyMonospace, marginInlineEnd: '8px' },
   name: { color: tokens.colorNeutralForeground3 },
+  note: { color: tokens.colorPaletteRedForeground1, fontSize: tokens.fontSizeBase200 },
 });
 
 export function useDebounced<T>(value: T, ms = 300): T {
@@ -31,6 +32,8 @@ export interface LookupComboboxProps {
   disabled?: boolean;
   placeholder?: string;
   validationMessage?: string;
+  /** Options for which this returns a note are shown disabled with the note (e.g. "On hold"). */
+  disabledNote?: (item: LookupItem) => string | null;
 }
 
 /**
@@ -85,12 +88,16 @@ export function LookupCombobox(p: LookupComboboxProps) {
             {query.isError ? 'Could not load' : 'No results'}
           </Option>
         ) : (
-          items.map((i) => (
-            <Option key={i.id} value={i.id} text={i.id}>
-              <span className={s.id}>{i.id}</span>
-              <span className={s.name}>{i.name}</span>
-            </Option>
-          ))
+          items.map((i) => {
+            const note = p.disabledNote?.(i) ?? null;
+            return (
+              <Option key={i.id} value={i.id} text={i.id} disabled={!!note}>
+                <span className={s.id}>{i.id}</span>
+                <span className={s.name}>{i.name}</span>
+                {note && <span className={s.note}> · {note}</span>}
+              </Option>
+            );
+          })
         )}
       </Combobox>
     </Field>

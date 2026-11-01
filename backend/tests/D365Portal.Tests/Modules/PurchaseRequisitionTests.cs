@@ -6,6 +6,8 @@ using D365Portal.Core.Auditing;
 using D365Portal.Core.D365;
 using D365Portal.Core.Entities;
 using D365Portal.Core.Tenancy;
+using D365Portal.Infrastructure.D365;
+using Microsoft.Extensions.Caching.Memory;
 using D365Portal.Tests.Api;
 using D365Portal.Tests.Infrastructure;
 
@@ -20,7 +22,7 @@ public class PurchaseRequisitionTests : IClassFixture<ApiFactory>
         new("Office supplies", null, "000123", new DateOnly(2026, 11, 15), null, "Q4 restock", lines);
 
     private static CreatePrLineRequest ItemLine(decimal qty = 2) =>
-        new("A0001", null, null, qty, "ea", 10m, "usd", "V1", "1", "11", null);
+        new("A0001", null, null, qty, "ea", 10m, "usd", "V1", "1", "11", null, Style: "Classic");
 
     private static CreatePrLineRequest CategoryLine() =>
         new(null, "Office supplies", "Printer paper", 5, "box", null, null, null, null, null, null);
@@ -31,7 +33,8 @@ public class PurchaseRequisitionTests : IClassFixture<ApiFactory>
         var tenant = new TenantContext();
         tenant.SetTenant(Guid.NewGuid(), Guid.NewGuid(), "u@contoso.com", UserRole.User);
         tenant.SetCompany("USMF");
-        return (new PurchaseRequisitionService(new FakeSettings(), odata, tenant, new NullAudit()), odata);
+        var lookups = new LookupService(odata, new MemoryCache(new MemoryCacheOptions()));
+        return (new PurchaseRequisitionService(new FakeSettings(), odata, tenant, new NullAudit(), lookups), odata);
     }
 
     [Fact]
@@ -43,7 +46,7 @@ public class PurchaseRequisitionTests : IClassFixture<ApiFactory>
         pr.RequisitionNumber.Should().Be("PR-000042");
         var header = JsonSerializer.Serialize(odata.Posts.Single().Body);
         header.Should().Contain("\"RequisitionName\":\"Office supplies\"")
-            .And.Contain("\"PreparerPersonnelNumber\":\"000123\"")
+            .And.NotContain("PreparerPersonnelNumber") // D365 uses the integration user's worker
             .And.Contain("\"DefaultRequestedDate\":\"2026-11-15T12:00:00Z\"")
             .And.NotContain("DefaultAccountingDate"); // nulls are not sent
 
@@ -54,11 +57,25 @@ public class PurchaseRequisitionTests : IClassFixture<ApiFactory>
         first["RequisitionLineNumber"].Should().Be(1);
         first["BuyingLegalEntityId"].Should().Be("USMF");
         first["CurrencyCode"].Should().Be("USD");
+        first["RequisitionerPersonnelNumber"].Should().Be("000123");
+        first["ProductStyleId"].Should().Be("Classic");
         first.Should().NotContainKey("ProcurementProductCategoryName");
         var second = (Dictionary<string, object?>)ops[1].Body!;
         second["ProcurementProductCategoryName"].Should().Be("Office supplies");
         second["ProductName"].Should().Be("Printer paper");
         second.Should().NotContainKey("ItemNumber");
+    }
+
+    [Fact]
+    public async Task Items_on_hold_are_rejected_before_anything_is_created()
+    {
+        var (svc, odata) = Create();
+        odata.OnHold.Add("A0001");
+        var act = () => svc.CreateAsync(Request(ItemLine()), default);
+        (await act.Should().ThrowAsync<D365Portal.Api.Admin.AdminException>()).Which.Code.Should().Be("item_on_hold");
+        odata.Posts.Should().BeEmpty();
+        odata.Gets.Single(g => g.Set == LookupService.DefaultOrderSettingsSet).Query.Filter
+            .Should().Contain("IsProcurementProcessingstopped eq Microsoft.Dynamics.DataEntities.NoYes'Yes'").And.Contain("ItemNumber eq 'A0001'");
     }
 
     [Fact]
@@ -112,7 +129,7 @@ public class PurchaseRequisitionTests : IClassFixture<ApiFactory>
         noTenant.StatusCode.Should().Be(HttpStatusCode.Forbidden);
 
         var client = _f.ClientFor(oid, tid, user.Email, tenant.Id);
-        var invalid = await client.PostAsJsonAsync("/api/purchase-requisitions", new { name = "", preparer = "", lines = Array.Empty<object>() });
+        var invalid = await client.PostAsJsonAsync("/api/purchase-requisitions", new { name = "", lines = Array.Empty<object>() });
         invalid.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         (await invalid.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString().Should().Be("validation_failed");
 
@@ -140,10 +157,16 @@ public class PurchaseRequisitionTests : IClassFixture<ApiFactory>
         public List<IReadOnlyList<BatchOperation>> Batches { get; } = new();
         public List<(string Set, IReadOnlyDictionary<string, object?> Key)> Deletes { get; } = new();
         public D365Exception? FailBatch { get; set; }
+        public List<string> OnHold { get; } = new();
 
         public Task<ODataPage> GetAsync(D365ConnectionSettings s, string entitySet, ODataQuery query, CancellationToken ct)
         {
             Gets.Add((entitySet, query));
+            if (entitySet == LookupService.DefaultOrderSettingsSet)
+            {
+                var held = OnHold.Select(i => JsonDocument.Parse($"{{\"ItemNumber\":\"{i}\"}}").RootElement.Clone()).ToList();
+                return Task.FromResult(new ODataPage(held, held.Count));
+            }
             var json = entitySet == PurchaseRequisitionService.HeaderSet
                 ? """[{"RequisitionNumber":"PR-000042","RequisitionName":"Office supplies","RequisitionStatus":"Draft","DefaultRequestedDate":"2026-11-15T12:00:00Z","DefaultAccountingDate":"1900-01-01T00:00:00Z"}]"""
                 : """[{"RequisitionLineNumber":1,"BuyingLegalEntityId":"USMF","ItemNumber":"A0001","RequestedPurchaseQuantity":2,"PurchasePrice":10,"LineAmount":20,"CurrencyCode":"USD"}]""";

@@ -77,13 +77,18 @@ const useStyles = makeStyles({
   muted: { color: tokens.colorNeutralForeground3 },
 });
 
-const preparerKey = (tenantId: string | null) => `d365portal.preparer.${tenantId ?? ''}`;
-function readPreparer(tenantId: string | null) {
-  try { return localStorage.getItem(preparerKey(tenantId)) ?? ''; } catch { return ''; }
+const requesterKey = (tenantId: string | null) => `d365portal.requester.${tenantId ?? ''}`;
+function readRequester(tenantId: string | null) {
+  try { return localStorage.getItem(requesterKey(tenantId)) ?? ''; } catch { return ''; }
 }
-function savePreparer(tenantId: string | null, v: string) {
-  try { localStorage.setItem(preparerKey(tenantId), v); } catch { /* storage unavailable */ }
+function saveRequester(tenantId: string | null, v: string) {
+  try { localStorage.setItem(requesterKey(tenantId), v); } catch { /* storage unavailable */ }
 }
+
+const isProductMaster = (extra?: Record<string, string | null> | null) =>
+  !!extra && (extra.ProductSubType === 'ProductMaster' || !!extra.ProductDimensionGroupName);
+
+const noVariant = { variant: '', configuration: '', size: '', color: '', style: '', version: '' };
 
 type LineErrors = Record<string, string>;
 
@@ -97,7 +102,7 @@ export function PurchaseRequisitionCreatePage() {
   const company = useSessionStore((st) => st.company);
 
   const [form, setForm] = useState<PrForm>(() => ({
-    name: '', purpose: 'Consumption', preparer: readPreparer(tenantId), requestedDate: '', accountingDate: '', justification: '',
+    name: '', purpose: 'Consumption', requester: readRequester(tenantId), requestedDate: '', accountingDate: '', justification: '',
   }));
   const [lines, setLines] = useState<PrLineForm[]>([emptyLine()]);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -111,7 +116,7 @@ export function PurchaseRequisitionCreatePage() {
   const create = useMutation({
     mutationFn: () => createPurchaseRequisition(api, toCreateBody(prFormSchema.parse(form), lines)),
     onSuccess: (pr) => {
-      savePreparer(tenantId, form.preparer);
+      saveRequester(tenantId, form.requester ?? '');
       qc.invalidateQueries({ queryKey: ['pr'] });
       qc.setQueryData(['pr', tenantId, company, 'detail', pr.requisitionNumber], pr);
       notify.success(`Requisition ${pr.requisitionNumber} created`, 'It is a draft in D365. Submit it for approval there.');
@@ -170,8 +175,8 @@ export function PurchaseRequisitionCreatePage() {
               <Option value="Replenishment">Replenishment</Option>
             </Dropdown>
           </Field>
-          <LookupCombobox lookup="workers" label="Preparer (worker)" required value={form.preparer || null}
-            validationMessage={errors.preparer} onChange={(id) => set('preparer', id ?? '')} />
+          <LookupCombobox lookup="workers" label="Requester (optional)" value={form.requester || null}
+            placeholder="Defaults to the preparer" onChange={(id) => set('requester', id ?? '')} />
           <Field label="Requested date">
             <Input type="date" value={form.requestedDate} onChange={(_, d) => set('requestedDate', d.value)} />
           </Field>
@@ -205,14 +210,30 @@ export function PurchaseRequisitionCreatePage() {
               <div className={s.lineGrid}>
                 {l.kind === 'item' ? (
                   <LookupCombobox lookup="products" label="Item" required value={l.itemNumber || null} validationMessage={le.itemNumber}
+                    disabledNote={(it) => (it.extra?.OnHold === 'Yes' ? 'On hold for purchasing' : null)}
                     onChange={(id, item) => setLine(i, {
+                      ...noVariant,
                       itemNumber: id ?? '',
                       description: item?.name ?? l.description,
                       unit: item?.extra?.PurchaseUnitSymbol || l.unit,
+                      needsVariant: isProductMaster(item?.extra),
+                      onHold: item?.extra?.OnHold === 'Yes',
                     })} />
                 ) : (
                   <LookupCombobox lookup="procurementCategories" label="Procurement category" required value={l.procurementCategory || null}
                     validationMessage={le.procurementCategory} onChange={(id) => setLine(i, { procurementCategory: id ?? '' })} />
+                )}
+                {l.kind === 'item' && l.needsVariant && l.itemNumber && (
+                  <LookupCombobox key={`variant-${l.itemNumber}`} lookup="productVariants" label="Variant (product dimensions)" required
+                    value={l.variant || null} filters={{ item: l.itemNumber }} validationMessage={le.variant}
+                    onChange={(id, v) => setLine(i, {
+                      variant: id ?? '',
+                      configuration: v?.extra?.ProductConfigurationId ?? '',
+                      size: v?.extra?.ProductSizeId ?? '',
+                      color: v?.extra?.ProductColorId ?? '',
+                      style: v?.extra?.ProductStyleId ?? '',
+                      version: v?.extra?.ProductVersionId ?? '',
+                    })} />
                 )}
                 <Field className={s.wide} label="Description" required={l.kind === 'category'} validationMessage={le.description}>
                   <Input value={l.description ?? ''} maxLength={60} onChange={(_, d) => setLine(i, { description: d.value })} />

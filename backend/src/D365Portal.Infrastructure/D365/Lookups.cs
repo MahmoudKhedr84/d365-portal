@@ -28,7 +28,12 @@ public static class LookupCatalog
             ["CurrencyCode", "VendorGroupId"]),
         new("products", "Released products", ["ReleasedProductsV2", "ReleasedProducts"],
             ["ItemNumber"], ["ProductName", "SearchName", "ProductSearchName"], true,
-            ["PurchaseUnitSymbol", "InventoryUnitSymbol", "ProductType"]),
+            ["PurchaseUnitSymbol", "InventoryUnitSymbol", "ProductType", "ProductSubType", "ProductDimensionGroupName"]),
+        // Variants of a product master (color/size/style/configuration/version), filtered by ?item=.
+        new("productVariants", "Product variants", ["ReleasedProductVariantsV2", "ReleasedProductVariants"],
+            ["ProductVariantNumber"], ["ProductName", "ProductDescription", "ProductSearchName"], true,
+            ["ProductConfigurationId", "ProductSizeId", "ProductColorId", "ProductStyleId", "ProductVersionId"],
+            new Dictionary<string, string[]> { ["item"] = ["ItemNumber", "ProductMasterNumber"] }),
         new("procurementCategories", "Procurement categories",
             ["ProcurementCategories", "ProcurementProductCategories", "ProductCategories"],
             ["ProcurementCategoryName", "CategoryName", "Name"], ["Description", "FriendlyName", "CategoryDescription"], false,
@@ -138,7 +143,7 @@ public sealed class LookupService(ID365ODataClient odata, IMemoryCache cache)
             Top = Math.Clamp(top, 1, MaxTop),
         }, ct);
 
-        return page.Rows
+        var items = page.Rows
             .Select(row => new LookupItem(
                 ReadString(row, r.IdField) ?? string.Empty,
                 r.NameField is null ? string.Empty : ReadString(row, r.NameField) ?? string.Empty,
@@ -146,6 +151,49 @@ public sealed class LookupService(ID365ODataClient odata, IMemoryCache cache)
             .Where(i => i.Id.Length > 0)
             .DistinctBy(i => i.Id)
             .ToList();
+
+        // Items stopped for purchasing (default order settings) can't go on requisitions/POs: flag them.
+        if (def.Key == "products" && company is not null && items.Count > 0)
+        {
+            var onHold = await GetPurchaseOnHoldAsync(s, company, items.Select(i => i.Id), ct);
+            if (onHold.Count > 0)
+                items = items.Select(i => onHold.Contains(i.Id)
+                    ? i with { Extra = new Dictionary<string, string?>(i.Extra ?? new Dictionary<string, string?>()) { ["OnHold"] = "Yes" } }
+                    : i).ToList();
+        }
+        return items;
+    }
+
+    public const string DefaultOrderSettingsSet = "ProductDefaultOrderSettings";
+
+    /// <summary>
+    /// Item numbers whose purchase default order settings are "Stopped" in the company
+    /// (D365: "Product X is on hold"). Best effort: returns empty if the entity isn't available.
+    /// </summary>
+    public async Task<IReadOnlySet<string>> GetPurchaseOnHoldAsync(
+        D365ConnectionSettings s, string company, IEnumerable<string> itemNumbers, CancellationToken ct)
+    {
+        var ids = itemNumbers.Where(i => !string.IsNullOrWhiteSpace(i)).Distinct(StringComparer.OrdinalIgnoreCase).Take(50).ToList();
+        if (ids.Count == 0) return new HashSet<string>();
+        try
+        {
+            var page = await odata.GetAsync(s, DefaultOrderSettingsSet, new ODataQuery
+            {
+                CrossCompany = true,
+                Select = ["ItemNumber"],
+                Filter = ODataFilter.And(
+                    ODataFilter.Company(company),
+                    "IsProcurementProcessingstopped eq Microsoft.Dynamics.DataEntities.NoYes'Yes'",
+                    ODataFilter.Or(ids.Select(i => $"ItemNumber eq {ODataFilter.Literal(i)}").ToArray())),
+                Top = 100,
+            }, ct);
+            return page.Rows.Select(r => ReadString(r, "ItemNumber")).OfType<string>()
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        }
+        catch (D365Exception)
+        {
+            return new HashSet<string>();
+        }
     }
 
     public async Task<ResolvedLookup> ResolveAsync(D365ConnectionSettings s, LookupDefinition def, string? company, CancellationToken ct)

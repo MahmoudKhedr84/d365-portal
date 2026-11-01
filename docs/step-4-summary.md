@@ -24,3 +24,10 @@
 - The preparer must be an existing worker (personnel number) in D365 who is allowed to prepare requisitions for the buying company.
 - Submitting for workflow approval is done in D365, because the workflow submit action is not available through standard OData. New requisitions are created as **Draft**.
 - The D365 app user needs create rights on purchase requisitions.
+
+## Fixes after first test in YELO UAT (WFQ)
+- **Preparer.** D365 requires the preparer to be the *current worker*, meaning the worker linked to the integration user (015115). The portal no longer sends a preparer, so D365 fills it in. Users can pick an optional **Requester** (`RequisitionerPersonnelNumber` on the lines).
+- **Items on hold.** Items whose purchase default order settings are *Stopped* (`ProductDefaultOrderSettings.IsProcurementProcessingstopped`) appear greyed out with "On hold for purchasing" and can't be selected. The server also rejects them (`item_on_hold`) before anything is created.
+- **Product dimensions.** For product masters (`ProductSubType = ProductMaster` / a product dimension group), the line requires a **Variant**, picked from `ReleasedProductVariantsV2` filtered by item. Its configuration, size, color, style and version are sent as `ProductConfigurationId`, `ProductSizeId`, `ProductColorId`, `ProductStyleId` and `ProductVersionId`.
+- **Errors.** D365 errors now show the Infolog text from `innererror`/`internalexception` instead of "An error has occurred.".
+- **Not covered:** a hold set only in site-specific order settings isn't checked up front. D365's own message is shown instead.
