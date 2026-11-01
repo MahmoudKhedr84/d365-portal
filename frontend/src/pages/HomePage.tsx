@@ -2,6 +2,7 @@ import { Body1, Caption1, Card, CardHeader, Subtitle2, Title2, makeStyles, token
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import type { NavItem } from '@/navigation';
+import { ReferenceDataCard } from '@/components/ReferenceDataCard';
 
 const useStyles = makeStyles({
   header: { marginBottom: '20px', display: 'flex', flexDirection: 'column', rowGap: '4px' },
@@ -51,6 +52,7 @@ export function HomePage({
           </Link>
         ))}
       </div>
+      {tenantName && company && <ReferenceDataCard company={company} />}
     </>
   );
 }

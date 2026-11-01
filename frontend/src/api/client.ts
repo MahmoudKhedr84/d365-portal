@@ -28,6 +28,8 @@ export interface ApiClientDeps {
   baseUrl: string;
   getToken: () => Promise<string>;
   getTenantId: () => string | null;
+  /** Working company inside the tenant; sent as X-Company with tenant-scoped calls. */
+  getCompany?: () => string | null;
   fetchImpl?: typeof fetch;
 }
 
@@ -48,7 +50,11 @@ export function createApiClient(deps: ApiClientDeps) {
       Authorization: `Bearer ${await deps.getToken()}`,
     };
     const tenantId = options.tenantScoped === false ? null : deps.getTenantId();
-    if (tenantId) headers['X-Tenant-Id'] = tenantId;
+    if (tenantId) {
+      headers['X-Tenant-Id'] = tenantId;
+      const company = deps.getCompany?.();
+      if (company) headers['X-Company'] = company;
+    }
     if (options.body !== undefined) headers['Content-Type'] = 'application/json';
 
     let response: Response;

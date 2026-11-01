@@ -8,6 +8,12 @@ import {
   Button,
   Caption1,
   Card,
+  Dialog,
+  DialogActions,
+  DialogBody,
+  DialogContent,
+  DialogSurface,
+  DialogTitle,
   Field,
   Input,
   MessageBar,
@@ -20,10 +26,10 @@ import {
   makeStyles,
   tokens,
 } from '@fluentui/react-components';
-import { Save20Regular } from '@fluentui/react-icons';
+import { Delete20Regular, Save20Regular } from '@fluentui/react-icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
-import { getTenant, platformTenantScope, updateTenant } from '@/api/admin';
+import { deleteTenant, getTenant, platformTenantScope, updateTenant, type Tenant } from '@/api/admin';
 import { useApi } from '@/api/ApiProvider';
 import { ConnectionPanel } from '@/components/admin/ConnectionPanel';
 import { UsersPanel } from '@/components/admin/UsersPanel';
@@ -42,7 +48,79 @@ const useStyles = makeStyles({
   full: { '@media (min-width: 720px)': { gridColumn: '1 / -1' } },
   muted: { color: tokens.colorNeutralForeground3 },
   mono: { fontFamily: tokens.fontFamilyMonospace },
+  danger: {
+    padding: '20px',
+    rowGap: '12px',
+    maxWidth: '760px',
+    border: `1px solid ${tokens.colorPaletteRedBorder2}`,
+  },
+  dangerTitle: { color: tokens.colorPaletteRedForeground1 },
+  deleteButton: {
+    backgroundColor: tokens.colorPaletteRedBackground3,
+    color: tokens.colorNeutralForegroundOnBrand,
+    ':hover': { backgroundColor: tokens.colorPaletteRedForeground1, color: tokens.colorNeutralForegroundOnBrand },
+    ':hover:active': { backgroundColor: tokens.colorPaletteRedForeground1, color: tokens.colorNeutralForegroundOnBrand },
+  },
 });
+
+/** Permanent deletion with a typed-slug confirmation. */
+export function DeleteTenantCard({ tenant }: { tenant: Tenant }) {
+  const s = useStyles();
+  const api = useApi();
+  const qc = useQueryClient();
+  const notify = useNotify();
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
+  const [typed, setTyped] = useState('');
+
+  const remove = useMutation({
+    mutationFn: () => deleteTenant(api, tenant.id, typed.trim()),
+    onSuccess: () => {
+      setOpen(false);
+      qc.removeQueries({ queryKey: ['platform', tenant.id] });
+      void qc.invalidateQueries({ queryKey: ['platform', 'tenants'] });
+      void qc.invalidateQueries({ queryKey: ['session'] }); // the signed-in user may have belonged to it
+      notify.success('Tenant deleted', `${tenant.name} and its users were removed.`);
+      navigate('/platform/tenants');
+    },
+    onError: (e) => notify.error('Could not delete the tenant', e),
+  });
+
+  return (
+    <Card className={s.danger}>
+      <Subtitle2 as="h2" className={s.dangerTitle}>Danger zone</Subtitle2>
+      <Body1>
+        Deleting <strong>{tenant.name}</strong> removes its D365 connection, all {tenant.userCount} user
+        {tenant.userCount === 1 ? '' : 's'} and their company access. Audit history is kept. This can’t be undone.
+      </Body1>
+      <div>
+        <Button className={s.deleteButton} icon={<Delete20Regular />} onClick={() => { setTyped(''); setOpen(true); }}>
+          Delete tenant
+        </Button>
+      </div>
+      <Dialog open={open} onOpenChange={(_, d) => setOpen(d.open)}>
+        <DialogSurface>
+          <DialogBody>
+            <DialogTitle>Delete {tenant.name}?</DialogTitle>
+            <DialogContent>
+              <Field label={<>Type <span className={s.mono}>{tenant.slug}</span> to confirm</>} required>
+                <Input value={typed} onChange={(_, d) => setTyped(d.value)} autoComplete="off" aria-label="Tenant slug" />
+              </Field>
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setOpen(false)}>Cancel</Button>
+              <Button className={s.deleteButton} icon={<Delete20Regular />}
+                disabled={typed.trim() !== tenant.slug || remove.isPending}
+                onClick={() => remove.mutate()}>
+                {remove.isPending ? 'Deleting…' : 'Delete permanently'}
+              </Button>
+            </DialogActions>
+          </DialogBody>
+        </DialogSurface>
+      </Dialog>
+    </Card>
+  );
+}
 
 export function TenantDetailPage() {
   const s = useStyles();
@@ -118,6 +196,7 @@ export function TenantDetailPage() {
 
       <ConnectionPanel scope={scope} />
       <UsersPanel scope={scope} title="Users and tenant admins" />
+      <DeleteTenantCard tenant={t} />
     </div>
   );
 }

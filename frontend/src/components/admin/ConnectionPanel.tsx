@@ -21,6 +21,7 @@ import { PlugConnected20Regular, Save20Regular } from '@fluentui/react-icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { connectionFormSchema, type AdminScope, type Connection, type ConnectionForm, type TestResult } from '@/api/admin';
 import { errorMessage, fieldErrors, useNotify } from '@/components/notify';
+import { EntityCheckPanel } from './EntityCheckPanel';
 
 const useStyles = makeStyles({
   card: { padding: '20px', rowGap: '16px', maxWidth: '760px' },
@@ -186,6 +187,8 @@ export function ConnectionPanel({ scope }: { scope: AdminScope }) {
               </Body1>
             )
           )}
+
+          <EntityCheckPanel scope={scope} disabled={!connection?.hasClientSecret || dirty || !connection?.isActive} />
         </>
       )}
     </Card>

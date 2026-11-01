@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { entityCheckRowSchema, type EntityCheckRow } from './lookups';
 import type { ApiRequest } from './client';
 import { roleSchema, type Role } from './session';
 
@@ -118,6 +119,8 @@ export interface AdminScope {
   saveConnection(form: ConnectionForm): Promise<Connection>;
   testConnection(): Promise<TestResult>;
   getCompanies(): Promise<Company[]>;
+  /** Probes the standard D365 entities the portal uses and reports the names found. */
+  checkEntities(): Promise<EntityCheckRow[]>;
   listUsers(): Promise<User[]>;
   createUser(form: UserForm): Promise<User>;
   updateUser(id: string, patch: Partial<UserForm>): Promise<User>;
@@ -144,6 +147,9 @@ function makeScope(api: ApiRequest, base: string, key: readonly unknown[], tenan
     },
     async getCompanies() {
       return z.array(companySchema).parse(await api<unknown>(`${base}/companies`, opts));
+    },
+    async checkEntities() {
+      return z.array(entityCheckRowSchema).parse(await api<unknown>(`${base}/d365/entities`, opts));
     },
     async listUsers() {
       return z.array(userSchema).parse(await api<unknown>(`${base}/users`, opts));
@@ -189,3 +195,8 @@ export async function updateTenant(
 }
 
 export const roleLabel = (r: Role) => (r === 'TenantAdmin' ? 'Tenant admin' : 'User');
+
+/** Permanently deletes a tenant. The slug must be repeated as confirmation. */
+export async function deleteTenant(api: ApiRequest, id: string, confirmSlug: string): Promise<void> {
+  await api<void>(`/platform/tenants/${id}?confirm=${encodeURIComponent(confirmSlug)}`, { tenantScoped: false, method: 'DELETE' });
+}

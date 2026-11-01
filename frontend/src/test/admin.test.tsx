@@ -44,6 +44,7 @@ function fakeScope(over: Partial<AdminScope> = {}): AdminScope {
     saveConnection: vi.fn(),
     testConnection: vi.fn(),
     getCompanies: vi.fn(async () => [{ id: 'DEMF', name: 'Germany' }, { id: 'USMF', name: 'USA' }]),
+    checkEntities: vi.fn(async () => []),
     listUsers: vi.fn(async () => [user()]),
     createUser: vi.fn(async (f) => user({ id: '22222222-2222-4222-8222-222222222222', email: f.email, displayName: f.displayName || f.email })),
     updateUser: vi.fn(async (_id, p) => user(p as Partial<User>)),
@@ -78,10 +79,11 @@ describe('UsersPanel', () => {
     expect(await screen.findByText('alice@contoso.com')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Add user' }));
 
-    const dialog = await screen.findByRole('dialog', {}, { timeout: 3000 });
+    // jsdom quirk: tabster's modalizer can leave the surface flagged hidden for the a11y-tree query.
+    const dialog = await screen.findByRole('dialog', { hidden: true }, { timeout: 3000 });
     await userEvent.type(within(dialog).getByLabelText(/Microsoft sign-in email/), 'bob@contoso.com');
-    await userEvent.click(await within(dialog).findByRole('checkbox', { name: /DEMF – Germany/ }));
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Add user' }));
+    await userEvent.click(await within(dialog).findByRole('checkbox', { name: /DEMF – Germany/, hidden: true }));
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Add user', hidden: true }));
 
     await waitFor(() => expect(scope.createUser).toHaveBeenCalled());
     const form = (scope.createUser as ReturnType<typeof vi.fn>).mock.calls[0]![0];

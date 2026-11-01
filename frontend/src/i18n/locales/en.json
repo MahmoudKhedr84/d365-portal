@@ -44,6 +44,9 @@
   "topBar": {
     "company": "Company",
     "noCompany": "No company",
+    "companies": "Switch company",
+    "switchCompany": "Switch company",
+    "companySwitched": "Now working in {{company}}",
     "switchTenant": "Switch organization",
     "signOut": "Sign out",
     "tenant": "Organization"

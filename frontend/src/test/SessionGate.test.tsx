@@ -49,7 +49,7 @@ describe('SessionGate', () => {
   });
 
   it('asks which tenant to open when the account is in several, then opens it', async () => {
-    renderGate(apiReturning(makeMe([{ tenantName: 'Contoso' }, { tenantName: 'Fabrikam', role: 'TenantAdmin', defaultCompany: 'DEMF' }])));
+    renderGate(apiReturning(makeMe([{ tenantName: 'Contoso' }, { tenantName: 'Fabrikam', role: 'TenantAdmin', defaultCompany: 'DEMF', companies: ['DEMF'] }])));
     expect(await screen.findByRole('heading', { name: 'Choose an organization' })).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Open Fabrikam' }));
     expect(await screen.findByText('Fabrikam · company DEMF')).toBeInTheDocument();

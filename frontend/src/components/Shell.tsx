@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { makeStyles, tokens } from '@fluentui/react-components';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -11,6 +12,9 @@ import { TenantDetailPage } from '@/pages/platform/TenantDetailPage';
 import { TenantsPage } from '@/pages/platform/TenantsPage';
 import { visibleNav } from '@/navigation';
 import { useCurrentMembership, useSessionStore } from '@/state/sessionStore';
+import { useApi } from '@/api/ApiProvider';
+import { switchCompany } from '@/api/session';
+import { useNotify } from './notify';
 
 const useStyles = makeStyles({
   root: { height: '100vh', display: 'flex', flexDirection: 'column' },
@@ -33,6 +37,29 @@ export function Shell({ onSignOut }: { onSignOut: () => void }) {
   const me = useSessionStore((st) => st.me)!;
   const clearTenant = useSessionStore((st) => st.clearTenant);
   const membership = useCurrentMembership();
+  const company = useSessionStore((st) => st.company);
+  const selectCompany = useSessionStore((st) => st.selectCompany);
+  const api = useApi();
+  const qc = useQueryClient();
+  const notify = useNotify();
+
+  // Switch immediately (every request carries X-Company), persist as the user's current company,
+  // and refetch company-dependent data. Revert if the server refuses.
+  const companySwitch = useMutation({
+    mutationFn: (next: string) => switchCompany(api, next),
+    onMutate: (next) => {
+      const previous = company;
+      selectCompany(next);
+      void qc.invalidateQueries({ predicate: (q) => q.queryKey[0] !== 'session' });
+      return { previous };
+    },
+    onSuccess: (_, next) => notify.success(t('topBar.companySwitched', { company: next })),
+    onError: (e, _next, ctx) => {
+      if (ctx?.previous) selectCompany(ctx.previous);
+      void qc.invalidateQueries({ predicate: (q) => q.queryKey[0] !== 'session' });
+      notify.error('Could not switch company', e);
+    },
+  });
 
   const [collapsed, setCollapsed] = useState(() => window.matchMedia?.(NARROW).matches ?? false);
   useEffect(() => {
@@ -46,7 +73,6 @@ export function Shell({ onSignOut }: { onSignOut: () => void }) {
   const viewer = { role: membership?.role ?? null, isSuperAdmin: me.isSuperAdmin };
   const items = visibleNav(viewer);
   const userName = me.displayName ?? me.email ?? 'User';
-  const company = membership?.currentCompany ?? membership?.defaultCompany ?? null;
 
   return (
     <div className={s.root}>
@@ -55,6 +81,9 @@ export function Shell({ onSignOut }: { onSignOut: () => void }) {
         email={me.email}
         tenantName={membership?.tenantName ?? null}
         company={company}
+        companies={membership?.companies ?? []}
+        onSwitchCompany={(c) => companySwitch.mutate(c)}
+        switchingCompany={companySwitch.isPending}
         canSwitchTenant={me.memberships.length > 1}
         onSwitchTenant={clearTenant}
         onSignOut={onSignOut}

@@ -38,3 +38,8 @@ export async function startSession(api: ApiRequest): Promise<Me> {
 export async function getCurrentTenant(api: ApiRequest): Promise<CurrentTenant> {
   return currentTenantSchema.parse(await api<unknown>('/tenant/current'));
 }
+
+/** Persists the working company for the selected tenant (must be one of the user's companies). */
+export async function switchCompany(api: ApiRequest, company: string): Promise<CurrentTenant> {
+  return currentTenantSchema.parse(await api<unknown>('/session/company', { method: 'PUT', body: { company } }));
+}

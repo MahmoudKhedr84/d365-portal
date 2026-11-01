@@ -5,6 +5,7 @@ import {
   MenuDivider,
   MenuGroupHeader,
   MenuItem,
+  MenuItemRadio,
   MenuList,
   MenuPopover,
   MenuTrigger,
@@ -12,7 +13,7 @@ import {
   makeStyles,
   tokens,
 } from '@fluentui/react-components';
-import { ArrowSwap20Regular, Building20Regular, Navigation20Regular, SignOut20Regular } from '@fluentui/react-icons';
+import { ArrowSwap20Regular, Building20Regular, ChevronDown16Regular, Navigation20Regular, SignOut20Regular } from '@fluentui/react-icons';
 import { useTranslation } from 'react-i18next';
 
 /** F&O-style navigation bar colors. */
@@ -55,6 +56,7 @@ const useStyles = makeStyles({
     fontWeight: tokens.fontWeightSemibold,
     letterSpacing: '0.04em',
   },
+  chevron: { marginInlineStart: '4px', verticalAlign: 'middle' },
   identity: { display: 'flex', flexDirection: 'column', paddingBlock: '4px' },
   muted: { color: tokens.colorNeutralForeground3, fontSize: tokens.fontSizeBase200 },
 });
@@ -64,6 +66,10 @@ export interface TopBarProps {
   email: string | null;
   tenantName: string | null;
   company: string | null;
+  /** Companies the user may work in inside the current tenant. */
+  companies: string[];
+  onSwitchCompany: (company: string) => void;
+  switchingCompany?: boolean;
   canSwitchTenant: boolean;
   onSwitchTenant: () => void;
   onSignOut: () => void;
@@ -83,12 +89,40 @@ export function TopBar(p: TopBarProps) {
       <span className={s.spacer} />
 
       {p.tenantName && (
-        // Read-only in step 1; becomes the company switcher dropdown in step 3.
-        <Tooltip content={t('topBar.company')} relationship="description">
-          <Button appearance="transparent" className={`${s.onDark} ${s.company}`} icon={<Building20Regular />} aria-label={t('topBar.company')}>
-            {p.company ?? t('topBar.noCompany')}
-          </Button>
-        </Tooltip>
+        <Menu
+          positioning="below-end"
+          checkedValues={{ company: p.company ? [p.company] : [] }}
+          onCheckedValueChange={(_, d) => {
+            const next = d.checkedItems[0];
+            if (next && next !== p.company) p.onSwitchCompany(next);
+          }}
+        >
+          <MenuTrigger disableButtonEnhancement>
+            <Tooltip content={t('topBar.switchCompany')} relationship="description">
+              <Button
+                appearance="transparent"
+                className={`${s.onDark} ${s.company}`}
+                icon={<Building20Regular />}
+                iconPosition="before"
+                disabled={p.companies.length === 0 || p.switchingCompany}
+                aria-label={`${t('topBar.company')}: ${p.company ?? t('topBar.noCompany')}`}
+              >
+                {p.company ?? t('topBar.noCompany')}
+                {p.companies.length > 1 && <ChevronDown16Regular className={s.chevron} />}
+              </Button>
+            </Tooltip>
+          </MenuTrigger>
+          <MenuPopover>
+            <MenuList>
+              <MenuGroupHeader>{t('topBar.companies')}</MenuGroupHeader>
+              {p.companies.map((c) => (
+                <MenuItemRadio key={c} name="company" value={c}>
+                  <span className={s.company}>{c}</span>
+                </MenuItemRadio>
+              ))}
+            </MenuList>
+          </MenuPopover>
+        </Menu>
       )}
 
       <Menu positioning="below-end">
