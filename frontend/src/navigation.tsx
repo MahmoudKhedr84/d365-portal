@@ -28,7 +28,7 @@ export interface NavItem {
 
 export const NAV_ITEMS: NavItem[] = [
   { path: '/', labelKey: 'nav.home', icon: <Home20Regular />, audience: 'tenantUser', section: 'workspaces' },
-  { path: '/purchase-requisitions', labelKey: 'nav.purchaseRequisitions', icon: <ClipboardTask20Regular />, audience: 'tenantUser', section: 'workspaces', step: 4 },
+  { path: '/purchase-requisitions', labelKey: 'nav.purchaseRequisitions', icon: <ClipboardTask20Regular />, audience: 'tenantUser', section: 'workspaces' },
   { path: '/purchase-orders', labelKey: 'nav.purchaseOrders', icon: <Cart20Regular />, audience: 'tenantUser', section: 'workspaces', step: 5 },
   { path: '/cases', labelKey: 'nav.cases', icon: <DocumentBulletList20Regular />, audience: 'tenantUser', section: 'workspaces', step: 6 },
   { path: '/general-journals', labelKey: 'nav.generalJournals', icon: <BookOpen20Regular />, audience: 'tenantUser', section: 'workspaces', step: 7 },

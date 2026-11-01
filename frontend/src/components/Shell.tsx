@@ -10,6 +10,9 @@ import { PlaceholderPage } from '@/pages/PlaceholderPage';
 import { AdminConnectionPage, AdminUsersPage } from '@/pages/admin/AdminPages';
 import { TenantDetailPage } from '@/pages/platform/TenantDetailPage';
 import { TenantsPage } from '@/pages/platform/TenantsPage';
+import { PurchaseRequisitionsPage } from '@/pages/purchaseRequisitions/PurchaseRequisitionsPage';
+import { PurchaseRequisitionCreatePage } from '@/pages/purchaseRequisitions/PurchaseRequisitionCreatePage';
+import { PurchaseRequisitionDetailPage } from '@/pages/purchaseRequisitions/PurchaseRequisitionDetailPage';
 import { visibleNav } from '@/navigation';
 import { useCurrentMembership, useSessionStore } from '@/state/sessionStore';
 import { useApi } from '@/api/ApiProvider';
@@ -104,6 +107,13 @@ export function Shell({ onSignOut }: { onSignOut: () => void }) {
                 />
               }
             />
+            {viewer.role && (
+              <>
+                <Route path="/purchase-requisitions" element={<PurchaseRequisitionsPage />} />
+                <Route path="/purchase-requisitions/new" element={<PurchaseRequisitionCreatePage />} />
+                <Route path="/purchase-requisitions/:number" element={<PurchaseRequisitionDetailPage />} />
+              </>
+            )}
             {viewer.role === 'TenantAdmin' && (
               <>
                 <Route path="/admin/users" element={<AdminUsersPage />} />

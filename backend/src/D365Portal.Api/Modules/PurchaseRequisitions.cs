@@ -280,7 +280,7 @@ public sealed class PurchaseRequisitionService(
         $"{s.EnvironmentUrl.TrimEnd('/')}/?cmp={Uri.EscapeDataString((company ?? string.Empty).ToLowerInvariant())}&mi={menuItem}";
 
     /// <summary>F&amp;O date fields are Edm.DateTimeOffset; noon UTC keeps the calendar date in every time zone.</summary>
-    public static string? ToODataDate(DateOnly? d) => d?.ToString("yyyy-MM-dd'T'12:00:00'Z'", CultureInfo.InvariantCulture);
+    public static string? ToODataDate(DateOnly? d) => d?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) is { } day ? day + "T12:00:00Z" : null; // DateOnly rejects time specifiers
 
     /// <summary>Drops null values so D365 applies its own defaults instead of receiving explicit nulls.</summary>
     public static Dictionary<string, object?> Compact(Dictionary<string, object?> d) =>
