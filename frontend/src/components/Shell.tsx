@@ -6,6 +6,9 @@ import { TopBar } from './TopBar';
 import { LeftNav } from './LeftNav';
 import { HomePage } from '@/pages/HomePage';
 import { PlaceholderPage } from '@/pages/PlaceholderPage';
+import { AdminConnectionPage, AdminUsersPage } from '@/pages/admin/AdminPages';
+import { TenantDetailPage } from '@/pages/platform/TenantDetailPage';
+import { TenantsPage } from '@/pages/platform/TenantsPage';
 import { visibleNav } from '@/navigation';
 import { useCurrentMembership, useSessionStore } from '@/state/sessionStore';
 
@@ -72,6 +75,18 @@ export function Shell({ onSignOut }: { onSignOut: () => void }) {
                 />
               }
             />
+            {viewer.role === 'TenantAdmin' && (
+              <>
+                <Route path="/admin/users" element={<AdminUsersPage />} />
+                <Route path="/admin/connection" element={<AdminConnectionPage />} />
+              </>
+            )}
+            {me.isSuperAdmin && (
+              <>
+                <Route path="/platform/tenants" element={<TenantsPage />} />
+                <Route path="/platform/tenants/:tenantId" element={<TenantDetailPage />} />
+              </>
+            )}
             {items
               .filter((i) => i.step)
               .map((i) => (

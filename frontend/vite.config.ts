@@ -11,7 +11,7 @@ export default defineConfig(({ mode }) => {
       alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
     },
     build: {
-      chunkSizeWarningLimit: 600, // Fluent UI v9 alone is ~510 kB minified (154 kB gzip)
+      chunkSizeWarningLimit: 700, // Fluent UI v9 alone is ~510 kB minified (154 kB gzip)
       rollupOptions: {
         output: {
           manualChunks: {

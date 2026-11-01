@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
+using D365Portal.Core.D365;
 using D365Portal.Core.Tenancy;
 using D365Portal.Infrastructure.Data;
 using D365Portal.Tests.Infrastructure;
@@ -29,6 +30,8 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     public const string SuperAdminOid = "superadmin-oid";
 
     private readonly SqliteConnection _connection = new("DataSource=:memory:");
+
+    public FakeD365 FakeD365 { get; } = new();
 
     public ApiFactory()
     {
@@ -61,6 +64,13 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
                     o.DefaultChallengeScheme = TestAuthHandler.SchemeName;
                 })
                 .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(TestAuthHandler.SchemeName, _ => { });
+
+            // No real D365 / Entra calls in tests.
+            services.RemoveAll<ID365ConnectionTester>();
+            services.RemoveAll<ID365CompanyDirectory>();
+            services.AddSingleton(FakeD365);
+            services.AddSingleton<ID365ConnectionTester>(FakeD365);
+            services.AddSingleton<ID365CompanyDirectory>(FakeD365);
         });
     }
 
@@ -127,5 +137,26 @@ public sealed class TestAuthHandler(
 
         var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, SchemeName));
         return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(principal, SchemeName)));
+    }
+}
+
+/// <summary>Stands in for D365: records the settings it was called with and returns canned results.</summary>
+public sealed class FakeD365 : ID365ConnectionTester, ID365CompanyDirectory
+{
+    public D365ConnectionSettings? LastSettings { get; private set; }
+    public bool Succeed { get; set; } = true;
+
+    public Task<D365TestResult> TestAsync(D365ConnectionSettings settings, CancellationToken ct)
+    {
+        LastSettings = settings;
+        return Task.FromResult(Succeed
+            ? new D365TestResult(true, "Connected. Sample company: USMF.", 12, "USMF")
+            : new D365TestResult(false, "D365 rejected the token.", 12));
+    }
+
+    public Task<IReadOnlyList<D365Company>> GetCompaniesAsync(D365ConnectionSettings settings, CancellationToken ct)
+    {
+        LastSettings = settings;
+        return Task.FromResult<IReadOnlyList<D365Company>>(new[] { new D365Company("DEMF", "Contoso Germany"), new D365Company("USMF", "Contoso USA") });
     }
 }

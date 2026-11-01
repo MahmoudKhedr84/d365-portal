@@ -32,10 +32,10 @@ export const NAV_ITEMS: NavItem[] = [
   { path: '/purchase-orders', labelKey: 'nav.purchaseOrders', icon: <Cart20Regular />, audience: 'tenantUser', section: 'workspaces', step: 5 },
   { path: '/cases', labelKey: 'nav.cases', icon: <DocumentBulletList20Regular />, audience: 'tenantUser', section: 'workspaces', step: 6 },
   { path: '/general-journals', labelKey: 'nav.generalJournals', icon: <BookOpen20Regular />, audience: 'tenantUser', section: 'workspaces', step: 7 },
-  { path: '/admin/users', labelKey: 'nav.users', icon: <People20Regular />, audience: 'tenantAdmin', section: 'administration', step: 2 },
-  { path: '/admin/connection', labelKey: 'nav.d365Connection', icon: <PlugConnected20Regular />, audience: 'tenantAdmin', section: 'administration', step: 2 },
+  { path: '/admin/users', labelKey: 'nav.users', icon: <People20Regular />, audience: 'tenantAdmin', section: 'administration' },
+  { path: '/admin/connection', labelKey: 'nav.d365Connection', icon: <PlugConnected20Regular />, audience: 'tenantAdmin', section: 'administration' },
   { path: '/admin/audit', labelKey: 'nav.auditLog', icon: <History20Regular />, audience: 'tenantAdmin', section: 'administration', step: 8 },
-  { path: '/platform/tenants', labelKey: 'nav.tenants', icon: <Building20Regular />, audience: 'superAdmin', section: 'platform', step: 2 },
+  { path: '/platform/tenants', labelKey: 'nav.tenants', icon: <Building20Regular />, audience: 'superAdmin', section: 'platform' },
 ];
 
 export interface Viewer {

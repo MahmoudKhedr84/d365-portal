@@ -12,6 +12,7 @@ import { directionFor } from '@/i18n';
 import { useSessionStore } from '@/state/sessionStore';
 import { SignInPage } from '@/pages/SignInPage';
 import { SessionGate } from '@/components/SessionGate';
+import { AppToaster } from '@/components/notify';
 
 function AuthGate() {
   const { t } = useTranslation();
@@ -50,6 +51,7 @@ export function App({ msal, config }: { msal: PublicClientApplication; config: A
         <QueryClientProvider client={queryClient}>
           <ApiProvider baseUrl={config.apiBaseUrl}>
             <BrowserRouter>
+              <AppToaster />
               <AuthGate />
             </BrowserRouter>
           </ApiProvider>

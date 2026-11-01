@@ -1,4 +1,6 @@
 using D365Portal.Core.Auditing;
+using D365Portal.Core.D365;
+using D365Portal.Infrastructure.D365;
 using D365Portal.Core.Identity;
 using D365Portal.Core.Security;
 using D365Portal.Core.Tenancy;
@@ -47,6 +49,17 @@ public static class DependencyInjection
         services.AddScoped<IUserDirectory, UserDirectory>();
         services.AddSingleton<IAuditLogger, AuditLogger>();
         services.AddSingleton<ISecretProtector, DataProtectionSecretProtector>();
+
+        // ---- D365 F&O connectivity ----
+        services.Configure<D365Options>(config.GetSection(D365Options.SectionName));
+        var timeout = TimeSpan.FromSeconds(Math.Clamp(config.GetValue("D365:TimeoutSeconds", 30), 5, 120));
+        services.AddMemoryCache();
+        services.AddHttpClient(D365TokenProvider.HttpClientName, c => c.Timeout = timeout);
+        services.AddHttpClient(D365ConnectionTester.HttpClientName, c => c.Timeout = timeout);
+        services.AddSingleton<ID365TokenProvider, D365TokenProvider>();
+        services.AddSingleton<D365ConnectionTester>();
+        services.AddSingleton<ID365ConnectionTester>(sp => sp.GetRequiredService<D365ConnectionTester>());
+        services.AddSingleton<ID365CompanyDirectory>(sp => sp.GetRequiredService<D365ConnectionTester>());
 
         return services;
     }

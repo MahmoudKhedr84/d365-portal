@@ -1,6 +1,10 @@
 using System.Threading.RateLimiting;
 using Azure.Identity;
 using D365Portal.Api;
+using D365Portal.Api.Admin;
+using D365Portal.Core.D365;
+using FluentValidation;
+using System.Text.Json.Serialization;
 using D365Portal.Api.Auth;
 using D365Portal.Api.Endpoints;
 using D365Portal.Api.Tenancy;
@@ -74,6 +78,11 @@ builder.Services.AddRateLimiter(o =>
         new ValueTask(Problems.Write(ctx.HttpContext, 429, "rate_limited", "Too many requests. Please slow down."));
 });
 
+// ---------- Application services ----------
+builder.Services.AddScoped<AdminService>();
+builder.Services.AddValidatorsFromAssemblyContaining<Program>(includeInternalTypes: false);
+builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+
 // ---------- Errors, health, OpenAPI ----------
 builder.Services.AddProblemDetails();
 builder.Services.AddHealthChecks();
@@ -130,6 +139,22 @@ app.UseExceptionHandler(errorApp => errorApp.Run(async http =>
 {
     var error = http.Features.Get<IExceptionHandlerFeature>()?.Error;
     var logger = http.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("Unhandled");
+    if (error is AdminException admin)
+    {
+        await Problems.Write(http, admin.Status, admin.Code, admin.Message);
+        return;
+    }
+    if (error is D365Exception d365)
+    {
+        logger.LogWarning("D365 call failed: {Code} {Status}", d365.Code, d365.StatusCode);
+        await Problems.Write(http, 502, d365.Code ?? "d365_error", d365.Message);
+        return;
+    }
+    if (error is BadHttpRequestException)
+    {
+        await Problems.Write(http, 400, "bad_request", "The request body is missing or malformed.");
+        return;
+    }
     if (error is TenantIsolationException)
     {
         logger.LogWarning(error, "Tenant isolation violation blocked");
@@ -165,6 +190,7 @@ app.MapGet("/health/db", async (AppDbContext db, CancellationToken ct) =>
     .ExcludeFromDescription();
 
 app.MapSessionEndpoints();
+app.MapAdminEndpoints();
 
 app.Run();
 

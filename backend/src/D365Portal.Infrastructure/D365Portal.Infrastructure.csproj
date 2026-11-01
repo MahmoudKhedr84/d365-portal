@@ -17,6 +17,9 @@
     </PackageReference>
   </ItemGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="D365Portal.Tests" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\D365Portal.Core\D365Portal.Core.csproj" />
   </ItemGroup>
 </Project>
