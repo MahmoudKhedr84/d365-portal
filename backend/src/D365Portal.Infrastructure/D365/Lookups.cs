@@ -49,8 +49,10 @@ public static class LookupCatalog
         new("workers", "Workers", ["Workers"], ["PersonnelNumber"], ["Name", "KnownAs"], false),
         new("customers", "Customers", ["CustomersV3", "CustomersV2", "Customers"],
             ["CustomerAccount"], ["OrganizationName", "Name", "CustomerName"], true, ["SalesCurrencyCode"]),
-        new("caseCategories", "Case categories", ["CaseCategories", "CaseCategoryHierarchyDetails", "CaseCategory"],
-            ["CaseCategory", "CategoryId", "Category"], ["Description", "Name", "CategoryName"], true, ["CategoryType"]),
+        // Cases module = Quality management CAPA cases (no standard customer-service case entity is exposed).
+        new("capaCategories", "CAPA categories", ["CAPACategories"], ["CategoryId"], ["CategoryDescription"], true),
+        new("capaTypes", "CAPA types", ["CAPATypes"], ["TypeId"], ["TypeDescription"], true),
+        new("capaSources", "CAPA sources", ["CAPASources"], ["SourceCode"], ["SourceDescription"], true),
         new("units", "Units of measure", ["UnitsOfMeasure", "Units"], ["UnitSymbol"], ["Description", "UnitDescription"], false),
     };
 
@@ -64,7 +66,7 @@ public static class LookupCatalog
         ("purchaseRequisitionLines", "Purchase requisition lines", new[] { "PurchaseRequisitionLines", "PurchaseRequisitionLinesV2" }, "PurchaseRequisition"),
         ("purchaseOrderHeaders", "Purchase order headers", new[] { "PurchaseOrderHeadersV2", "PurchaseOrderHeaders" }, "PurchaseOrder"),
         ("purchaseOrderLines", "Purchase order lines", new[] { "PurchaseOrderLinesV2", "PurchaseOrderLines" }, "PurchaseOrder"),
-        ("cases", "Cases", new[] { "CaseDetails", "Cases", "CaseDetailBases" }, "Case"),
+        ("cases", "CAPA cases", new[] { "CAPACases" }, "CAPA"),
         ("ledgerJournalHeaders", "General journal headers", new[] { "LedgerJournalHeaders" }, "LedgerJournal"),
         ("ledgerJournalLines", "General journal lines", new[] { "LedgerJournalLines", "GeneralJournalLines" }, "LedgerJournal"),
     };

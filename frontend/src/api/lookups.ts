@@ -25,7 +25,9 @@ export type LookupKey =
   | 'currencies'
   | 'workers'
   | 'customers'
-  | 'caseCategories'
+  | 'capaCategories'
+  | 'capaTypes'
+  | 'capaSources'
   | 'units';
 
 export function lookupUrl(key: string, search: string, filters: Record<string, string | undefined> = {}, top = 25): string {

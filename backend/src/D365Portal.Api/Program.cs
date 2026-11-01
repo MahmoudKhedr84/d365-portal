@@ -80,6 +80,7 @@ builder.Services.AddRateLimiter(o =>
 
 // ---------- Application services ----------
 builder.Services.AddScoped<AdminService>();
+builder.Services.AddScoped<D365Portal.Api.Modules.PurchaseRequisitionService>();
 builder.Services.AddValidatorsFromAssemblyContaining<Program>(includeInternalTypes: false);
 builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 
@@ -196,6 +197,7 @@ app.MapGet("/health/db", async (AppDbContext db, CancellationToken ct) =>
 app.MapSessionEndpoints();
 app.MapAdminEndpoints();
 app.MapLookupEndpoints();
+app.MapPurchaseRequisitionEndpoints();
 
 app.Run();
 

@@ -194,10 +194,10 @@ public class ODataClientTests
     public async Task Missing_entities_get_name_suggestions()
     {
         var (client, _, _, _) = Create((req, _) => req.RequestUri!.AbsolutePath == "/data/"
-            ? Ok("""{"value":[{"name":"CaseDetailsV2","kind":"EntitySet"}]}""")
+            ? Ok("""{"value":[{"name":"CAPACasesV2","kind":"EntitySet"}]}""")
             : new HttpResponseMessage(HttpStatusCode.NotFound));
         var rows = await new LookupService(client, new MemoryCache(new MemoryCacheOptions())).CheckAsync(Settings(), "USMF", default);
-        rows.Single(r => r.Key == "cases").Suggestions.Should().Equal("CaseDetailsV2");
+        rows.Single(r => r.Key == "cases").Suggestions.Should().Equal("CAPACasesV2");
         LookupCatalog.KeywordFor(LookupCatalog.Find("vendors")!).Should().Be("Vendor");
     }
 
