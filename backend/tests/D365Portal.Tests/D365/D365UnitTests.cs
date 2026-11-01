@@ -1,6 +1,7 @@
 using System.Net;
 using D365Portal.Core.D365;
 using D365Portal.Infrastructure.D365;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace D365Portal.Tests.D365;
 
@@ -66,5 +67,72 @@ public class D365UnitTests
     {
         var s = new D365ConnectionSettings(Guid.NewGuid(), "https://x.operations.dynamics.com", "t", "c", "super-secret");
         s.ToString().Should().NotContain("super-secret");
+    }
+
+    [Fact]
+    public void Html_error_pages_are_summarized()
+    {
+        var message = D365ConnectionTester.DescribeHttpError(HttpStatusCode.NotFound, "<html><body><h1>Resource not found</h1></body></html>");
+        message.Should().Contain("Resource not found").And.NotContain("<h1>");
+    }
+
+    [Fact]
+    public async Task Test_falls_back_to_the_next_company_entity_on_404()
+    {
+        var handler = new StubHandler(req => req.RequestUri!.AbsolutePath switch
+        {
+            "/data/LegalEntities" => new HttpResponseMessage(HttpStatusCode.NotFound),
+            "/data/DataAreas" => new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("""{"value":[{"id":"yhq","name":"Yelo HQ"}]}"""),
+            },
+            _ => new HttpResponseMessage(HttpStatusCode.NotFound),
+        });
+        var tester = new D365ConnectionTester(new StubFactory(handler), new StubTokens(), NullLogger<D365ConnectionTester>.Instance);
+        var settings = new D365ConnectionSettings(Guid.NewGuid(), $"https://t{Guid.NewGuid():N}.operations.dynamics.com", "t", "c", "s");
+
+        var result = await tester.TestAsync(settings, default);
+
+        result.Success.Should().BeTrue(result.Message);
+        result.Message.Should().Contain("YHQ").And.Contain("DataAreas");
+        handler.Paths.Should().ContainInOrder("/data/LegalEntities", "/data/DataAreas");
+
+        var companies = await tester.GetCompaniesAsync(settings, default);
+        companies.Should().ContainSingle(c => c.Id == "YHQ" && c.Name == "Yelo HQ");
+        handler.Paths.Last().Should().Be("/data/DataAreas"); // resolved name is remembered
+    }
+
+    [Fact]
+    public async Task Test_reports_all_tried_entities_when_none_exist()
+    {
+        var handler = new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
+        var tester = new D365ConnectionTester(new StubFactory(handler), new StubTokens(), NullLogger<D365ConnectionTester>.Instance);
+        var settings = new D365ConnectionSettings(Guid.NewGuid(), $"https://t{Guid.NewGuid():N}.operations.dynamics.com", "t", "c", "s");
+
+        var result = await tester.TestAsync(settings, default);
+
+        result.Success.Should().BeFalse();
+        result.Message.Should().Contain("LegalEntities").And.Contain("DataAreas").And.Contain("Companies");
+    }
+
+    private sealed class StubHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
+    {
+        public List<string> Paths { get; } = new();
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            Paths.Add(request.RequestUri!.AbsolutePath);
+            return Task.FromResult(respond(request));
+        }
+    }
+
+    private sealed class StubFactory(HttpMessageHandler handler) : IHttpClientFactory
+    {
+        public HttpClient CreateClient(string name) => new(handler, disposeHandler: false);
+    }
+
+    private sealed class StubTokens : ID365TokenProvider
+    {
+        public Task<string> GetTokenAsync(D365ConnectionSettings settings, CancellationToken ct) => Task.FromResult("token");
+        public void Invalidate(Guid tenantId) { }
     }
 }

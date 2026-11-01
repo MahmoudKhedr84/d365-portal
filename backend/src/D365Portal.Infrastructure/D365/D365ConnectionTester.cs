@@ -18,8 +18,12 @@ public sealed class D365ConnectionTester(
 {
     public const string HttpClientName = "d365";
 
-    // DataAreas field names differ between versions/clients; accept the known spellings.
-    private static readonly string[] IdFields = { "DataArea", "DataAreaId", "dataAreaId", "id", "Id" };
+    // The company list is exposed under different public entity names depending on the
+    // environment/version. Try them in order and remember the first one that answers.
+    internal static readonly string[] CompanyEntitySets = { "LegalEntities", "DataAreas", "Companies" };
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> ResolvedSets = new();
+
+    private static readonly string[] IdFields = { "LegalEntityId", "DataArea", "DataAreaId", "dataAreaId", "id", "Id" };
     private static readonly string[] NameFields = { "Name", "name", "CompanyName" };
 
     public async Task<D365TestResult> TestAsync(D365ConnectionSettings settings, CancellationToken ct)
@@ -27,11 +31,11 @@ public sealed class D365ConnectionTester(
         var sw = Stopwatch.StartNew();
         try
         {
-            var doc = await GetJsonAsync(settings, "DataAreas?$top=1", ct);
+            var (set, doc) = await GetCompanySetAsync(settings, "$top=1", ct);
             var first = FirstRow(doc);
             var sample = first is { } row ? DescribeCompany(row) : null;
             return new D365TestResult(true,
-                sample is null ? "Connected. The environment returned no companies." : $"Connected. Sample company: {sample}.",
+                sample is null ? $"Connected ({set}). The environment returned no companies." : $"Connected. Sample company: {sample} (from {set}).",
                 sw.ElapsedMilliseconds, sample);
         }
         catch (D365Exception ex)
@@ -42,7 +46,7 @@ public sealed class D365ConnectionTester(
 
     public async Task<IReadOnlyList<D365Company>> GetCompaniesAsync(D365ConnectionSettings settings, CancellationToken ct)
     {
-        var doc = await GetJsonAsync(settings, "DataAreas", ct);
+        var (_, doc) = await GetCompanySetAsync(settings, null, ct);
         var list = new List<D365Company>();
         if (doc.RootElement.TryGetProperty("value", out var rows) && rows.ValueKind == JsonValueKind.Array)
         {
@@ -56,6 +60,33 @@ public sealed class D365ConnectionTester(
         if (list.Count == 0)
             logger.LogWarning("DataAreas returned no rows with a recognizable id field for tenant {TenantId}", settings.TenantId);
         return list.DistinctBy(c => c.Id).OrderBy(c => c.Id).ToList();
+    }
+
+    /// <summary>GETs the first company entity set that exists (404 → try the next name).</summary>
+    private async Task<(string Set, JsonDocument Doc)> GetCompanySetAsync(D365ConnectionSettings s, string? query, CancellationToken ct)
+    {
+        var cacheKey = s.EnvironmentUrl;
+        var candidates = ResolvedSets.TryGetValue(cacheKey, out var known)
+            ? new[] { known }.Concat(CompanyEntitySets.Where(c => c != known))
+            : CompanyEntitySets;
+
+        D365Exception? last = null;
+        foreach (var set in candidates)
+        {
+            try
+            {
+                var doc = await GetJsonAsync(s, query is null ? set : $"{set}?{query}", ct);
+                ResolvedSets[cacheKey] = set;
+                return (set, doc);
+            }
+            catch (D365Exception ex) when (ex.StatusCode == 404)
+            {
+                last = ex;
+            }
+        }
+        throw new D365Exception(
+            $"None of the company entities ({string.Join(", ", CompanyEntitySets)}) were found at {s.EnvironmentUrl}/data. " +
+            $"Check the environment URL. Last response: {last?.Message}", 404, "d365_entity_not_found", last);
     }
 
     private async Task<JsonDocument> GetJsonAsync(D365ConnectionSettings s, string relative, CancellationToken ct)
@@ -84,7 +115,8 @@ public sealed class D365ConnectionTester(
             var body = await response.Content.ReadAsStringAsync(ct);
             if (!response.IsSuccessStatusCode)
             {
-                tokens.Invalidate(s.TenantId);
+                if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+                    tokens.Invalidate(s.TenantId);
                 throw new D365Exception(DescribeHttpError(response.StatusCode, body), (int)response.StatusCode, "d365_http_error");
             }
             try { return JsonDocument.Parse(body); }
@@ -113,17 +145,24 @@ public sealed class D365ConnectionTester(
     private static string? TryReadODataMessage(string body)
     {
         if (string.IsNullOrWhiteSpace(body)) return null;
+        static string Clip(string t) => t.Length > 300 ? t[..300] + "…" : t;
         try
         {
             using var doc = JsonDocument.Parse(body);
-            if (doc.RootElement.TryGetProperty("error", out var err) &&
+            var root = doc.RootElement;
+            if (root.TryGetProperty("error", out var err) &&
                 err.TryGetProperty("message", out var msg) && msg.ValueKind == JsonValueKind.String)
-            {
-                var text = msg.GetString();
-                return text is { Length: > 300 } ? text[..300] + "…" : text;
-            }
+                return Clip(msg.GetString() ?? string.Empty);
+            if (root.TryGetProperty("Message", out var m2) && m2.ValueKind == JsonValueKind.String)
+                return Clip(m2.GetString() ?? string.Empty);
         }
-        catch (JsonException) { }
+        catch (JsonException)
+        {
+            // Not JSON (e.g. an HTML error page): show a short plain-text excerpt.
+            var text = System.Text.RegularExpressions.Regex.Replace(body, "<[^>]+>", " ");
+            text = System.Text.RegularExpressions.Regex.Replace(text, @"\s+", " ").Trim();
+            return string.IsNullOrEmpty(text) ? null : Clip(text);
+        }
         return null;
     }
 
