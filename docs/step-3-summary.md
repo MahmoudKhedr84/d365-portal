@@ -39,3 +39,21 @@ Confirmed in YELO environments: the companies entity is **LegalEntities** (`Lega
 ## Manual configuration
 - The D365 user mapped to each app registration needs read access to the entities above. It also needs create rights for the modules built in steps 4–8.
 - Users only see the companies assigned to them under Users → company access.
+
+## Confirmed in YELO UAT (Check D365 entities, 2026-11-01)
+| Used for | Entity | Id / name | Per company |
+|---|---|---|---|
+| Vendors | VendorsV3 | VendorAccountNumber / VendorOrganizationName | Yes |
+| Released products | ReleasedProductsV2 | ItemNumber / SearchName | Yes |
+| Procurement categories | ProcurementProductCategories | CategoryName (+ CategoryHierarchyName) | No |
+| Sites / Warehouses | OperationalSites / Warehouses | SiteId·SiteName / WarehouseId·WarehouseName | Yes |
+| Main accounts | MainAccounts | MainAccountId / Name | No |
+| Financial dimensions / values | DimensionAttributes / FinancialDimensionValues | DimensionName / DimensionValue·Description | No |
+| Journal names | JournalNames | Name / Description | Yes |
+| Currencies, Workers, Units | Currencies, Workers, UnitsOfMeasure | CurrencyCode, PersonnelNumber, UnitSymbol | No |
+| Customers | CustomersV3 | CustomerAccount / OrganizationName | Yes |
+| Case categories | CaseCategoryHierarchyDetails | CaseCategory / Description | Yes |
+| PR headers / lines | PurchaseRequisitionHeaders / PurchaseRequisitionLines | — | **No** (shared; company is on the line) |
+| PO headers / lines | PurchaseOrderHeadersV2 / PurchaseOrderLinesV2 | — | Yes |
+| GJ headers / lines | LedgerJournalHeaders / LedgerJournalLines | — | Yes |
+| **Cases** | **not found** (CaseDetails, Cases, CaseDetailBases) | — | — |

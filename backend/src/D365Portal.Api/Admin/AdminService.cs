@@ -220,6 +220,19 @@ public sealed class AdminService(
         return await lookups.CheckAsync(settings, company, ct);
     }
 
+    /// <summary>Searches the environment's entity set names, e.g. "Case" → CaseDetails…</summary>
+    public async Task<IReadOnlyList<string>> FindEntitySetsAsync(Guid tenantId, string? search, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(search) || search.Trim().Length < 2)
+            throw new AdminException(400, "search_too_short", "Type at least 2 characters.");
+        var connection = await db.D365Connections.IgnoreQueryFilters().AsNoTracking()
+            .SingleOrDefaultAsync(x => x.TenantId == tenantId, ct)
+            ?? throw new AdminException(409, "no_connection", "Set up the D365 connection first.");
+        var settings = TryBuildSettings(connection, out var error)
+            ?? throw new AdminException(409, "connection_invalid", error!);
+        return await lookups.FindEntitySetsAsync(settings, search.Trim()[..Math.Min(search.Trim().Length, 60)], 100, ct);
+    }
+
     // ======================= Users =======================
 
     public async Task<IReadOnlyList<UserDto>> ListUsersAsync(Guid tenantId, CancellationToken ct)

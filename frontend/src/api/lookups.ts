@@ -63,5 +63,6 @@ export const entityCheckRowSchema = z.object({
   tried: z.array(z.string()),
   sampleFields: z.array(z.string()),
   error: z.string().nullable(),
+  suggestions: z.array(z.string()).nullable().optional(),
 });
 export type EntityCheckRow = z.infer<typeof entityCheckRowSchema>;

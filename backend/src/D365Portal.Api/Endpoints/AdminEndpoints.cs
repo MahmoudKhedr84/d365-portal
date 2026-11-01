@@ -56,6 +56,10 @@ public static class AdminEndpoints
                 s.CheckEntitiesAsync(tenantId, company: null, ct))
             .WithSummary("Which standard D365 entities/fields exist in the tenant's environment.");
 
+        platform.MapGet("/tenants/{tenantId:guid}/d365/entity-sets", (Guid tenantId, string? search, AdminService s, CancellationToken ct) =>
+                s.FindEntitySetsAsync(tenantId, search, ct))
+            .WithSummary("Search the environment's OData entity set names.");
+
         platform.MapGet("/tenants/{tenantId:guid}/connection", async (Guid tenantId, AdminService s, CancellationToken ct) =>
             await s.GetConnectionAsync(tenantId, ct) is { } c ? Results.Ok(c) : Results.NoContent());
 
@@ -110,6 +114,10 @@ public static class AdminEndpoints
         admin.MapGet("/d365/entities", (ITenantContext t, AdminService s, CancellationToken ct) =>
                 s.CheckEntitiesAsync(Tenant(t), t.Company, ct))
             .WithSummary("Which standard D365 entities/fields exist in this tenant's environment.");
+
+        admin.MapGet("/d365/entity-sets", (string? search, ITenantContext t, AdminService s, CancellationToken ct) =>
+                s.FindEntitySetsAsync(Tenant(t), search, ct))
+            .WithSummary("Search the environment's OData entity set names.");
 
         admin.MapGet("/users", (ITenantContext t, AdminService s, CancellationToken ct) => s.ListUsersAsync(Tenant(t), ct));
 

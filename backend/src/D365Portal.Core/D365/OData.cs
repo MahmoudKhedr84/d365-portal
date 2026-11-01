@@ -100,6 +100,8 @@ public interface ID365ODataClient
     Task<JsonElement> PostAsync(D365ConnectionSettings s, string entitySet, object body, CancellationToken ct);
     Task PatchAsync(D365ConnectionSettings s, string entitySet, IReadOnlyDictionary<string, object?> key, object body, CancellationToken ct);
     Task DeleteAsync(D365ConnectionSettings s, string entitySet, IReadOnlyDictionary<string, object?> key, CancellationToken ct);
+    /// <summary>Names of every entity set the environment exposes (OData service document at /data/).</summary>
+    Task<IReadOnlyList<string>> GetEntitySetNamesAsync(D365ConnectionSettings s, CancellationToken ct);
     /// <summary>Runs all operations in one changeset: all succeed or none are committed.</summary>
     Task<IReadOnlyList<BatchResult>> BatchAsync(D365ConnectionSettings s, IReadOnlyList<BatchOperation> operations, CancellationToken ct);
 }

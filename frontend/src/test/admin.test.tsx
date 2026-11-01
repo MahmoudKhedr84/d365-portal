@@ -45,6 +45,7 @@ function fakeScope(over: Partial<AdminScope> = {}): AdminScope {
     testConnection: vi.fn(),
     getCompanies: vi.fn(async () => [{ id: 'DEMF', name: 'Germany' }, { id: 'USMF', name: 'USA' }]),
     checkEntities: vi.fn(async () => []),
+    findEntitySets: vi.fn(async () => []),
     listUsers: vi.fn(async () => [user()]),
     createUser: vi.fn(async (f) => user({ id: '22222222-2222-4222-8222-222222222222', email: f.email, displayName: f.displayName || f.email })),
     updateUser: vi.fn(async (_id, p) => user(p as Partial<User>)),

@@ -121,6 +121,8 @@ export interface AdminScope {
   getCompanies(): Promise<Company[]>;
   /** Probes the standard D365 entities the portal uses and reports the names found. */
   checkEntities(): Promise<EntityCheckRow[]>;
+  /** Entity set names in the environment containing the search text. */
+  findEntitySets(search: string): Promise<string[]>;
   listUsers(): Promise<User[]>;
   createUser(form: UserForm): Promise<User>;
   updateUser(id: string, patch: Partial<UserForm>): Promise<User>;
@@ -150,6 +152,11 @@ function makeScope(api: ApiRequest, base: string, key: readonly unknown[], tenan
     },
     async checkEntities() {
       return z.array(entityCheckRowSchema).parse(await api<unknown>(`${base}/d365/entities`, opts));
+    },
+    async findEntitySets(search) {
+      return z.array(z.string()).parse(
+        await api<unknown>(`${base}/d365/entity-sets?search=${encodeURIComponent(search)}`, opts),
+      );
     },
     async listUsers() {
       return z.array(userSchema).parse(await api<unknown>(`${base}/users`, opts));

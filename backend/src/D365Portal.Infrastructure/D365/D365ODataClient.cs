@@ -75,6 +75,22 @@ public sealed class D365ODataClient(
         await Audit(s, entitySet, "DELETE", $"DELETE /data/{path}", status, true, null, ms, ct);
     }
 
+    public async Task<IReadOnlyList<string>> GetEntitySetNamesAsync(D365ConnectionSettings s, CancellationToken ct)
+    {
+        var (status, body, ms) = await SendAsync(s, HttpMethod.Get, string.Empty, null, null, ct, "$service", "GET", "GET /data/ (service document)");
+        using var doc = ParseJson(body, status);
+        var names = new List<string>();
+        if (doc.RootElement.TryGetProperty("value", out var value) && value.ValueKind == JsonValueKind.Array)
+            foreach (var e in value.EnumerateArray())
+            {
+                var kind = e.TryGetProperty("kind", out var k) ? k.GetString() : "EntitySet";
+                if (kind == "EntitySet" && e.TryGetProperty("name", out var n) && n.GetString() is { Length: > 0 } name)
+                    names.Add(name);
+            }
+        await Audit(s, "$service", "GET", "GET /data/ (service document)", status, true, $"{names.Count} entity sets", ms, ct);
+        return names;
+    }
+
     public async Task<IReadOnlyList<BatchResult>> BatchAsync(D365ConnectionSettings s, IReadOnlyList<BatchOperation> operations, CancellationToken ct)
     {
         if (operations.Count == 0) return Array.Empty<BatchResult>();

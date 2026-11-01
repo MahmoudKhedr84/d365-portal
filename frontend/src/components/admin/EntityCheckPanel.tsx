@@ -2,6 +2,8 @@ import {
   Badge,
   Button,
   Caption1,
+  Field,
+  Input,
   MessageBar,
   MessageBarBody,
   Table,
@@ -14,7 +16,8 @@ import {
   makeStyles,
   tokens,
 } from '@fluentui/react-components';
-import { TableSearch20Regular } from '@fluentui/react-icons';
+import { Search20Regular, TableSearch20Regular } from '@fluentui/react-icons';
+import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import type { AdminScope } from '@/api/admin';
 import type { EntityCheckRow } from '@/api/lookups';
@@ -23,7 +26,10 @@ import { errorMessage } from '@/components/notify';
 const useStyles = makeStyles({
   wrap: { display: 'flex', flexDirection: 'column', rowGap: '8px' },
   scroll: { overflowX: 'auto' },
-  mono: { fontFamily: tokens.fontFamilyMonospace, fontSize: tokens.fontSizeBase200 },
+  mono: { fontFamily: tokens.fontFamilyMonospace, fontSize: tokens.fontSizeBase200, overflowWrap: 'anywhere' },
+  table: { tableLayout: 'fixed', minWidth: '640px' },
+  find: { display: 'flex', columnGap: '8px', alignItems: 'flex-end', flexWrap: 'wrap', marginTop: '8px' },
+  names: { display: 'flex', flexWrap: 'wrap', gap: '4px 12px' },
   muted: { color: tokens.colorNeutralForeground3 },
 });
 
@@ -39,6 +45,8 @@ export function EntityCheckPanel({ scope, disabled }: { scope: AdminScope; disab
   const check = useMutation({ mutationFn: () => scope.checkEntities() });
   const rows = check.data ?? [];
   const missing = rows.filter((r) => !r.found).length;
+  const [term, setTerm] = useState('');
+  const find = useMutation({ mutationFn: (q: string) => scope.findEntitySets(q) });
 
   return (
     <div className={s.wrap}>
@@ -59,7 +67,7 @@ export function EntityCheckPanel({ scope, disabled }: { scope: AdminScope; disab
             “No data” means the entity exists but has no rows, so field names could not be confirmed.
           </Caption1>
           <div className={s.scroll}>
-            <Table size="small" aria-label="D365 entity check">
+            <Table size="small" aria-label="D365 entity check" className={s.table}>
               <TableHeader>
                 <TableRow>
                   <TableHeaderCell>Used for</TableHeaderCell>
@@ -82,7 +90,12 @@ export function EntityCheckPanel({ scope, disabled }: { scope: AdminScope; disab
                         <StatusBadge row={r} />
                       )}
                     </TableCell>
-                    <TableCell className={s.mono}>{r.entitySet ?? `tried ${r.tried.join(', ')}`}</TableCell>
+                    <TableCell className={s.mono}>
+                      {r.entitySet ?? `tried ${r.tried.join(', ')}`}
+                      {!r.found && r.suggestions && r.suggestions.length > 0 && (
+                        <div className={s.muted}>Similar: {r.suggestions.join(', ')}</div>
+                      )}
+                    </TableCell>
                     <TableCell className={s.mono}>
                       {r.kind === 'lookup'
                         ? [r.idField, r.nameField].filter(Boolean).join(' / ')
@@ -97,6 +110,24 @@ export function EntityCheckPanel({ scope, disabled }: { scope: AdminScope; disab
             </Table>
           </div>
         </>
+      )}
+      <div className={s.find}>
+        <Field label="Find an entity in this environment">
+          <Input value={term} onChange={(_, d) => setTerm(d.value)} placeholder="e.g. Case"
+            onKeyDown={(e) => e.key === 'Enter' && term.trim().length >= 2 && find.mutate(term.trim())} />
+        </Field>
+        <Button icon={<Search20Regular />} disabled={disabled || term.trim().length < 2 || find.isPending}
+          onClick={() => find.mutate(term.trim())}>
+          {find.isPending ? 'Searching…' : 'Search'}
+        </Button>
+      </div>
+      {find.isError && (
+        <MessageBar intent="error"><MessageBarBody>{errorMessage(find.error)}</MessageBarBody></MessageBar>
+      )}
+      {find.data && (
+        find.data.length === 0
+          ? <Caption1 className={s.muted}>No entity names contain “{find.variables}”.</Caption1>
+          : <div className={`${s.names} ${s.mono}`} aria-label="Matching entities">{find.data.map((n) => <span key={n}>{n}</span>)}</div>
       )}
     </div>
   );

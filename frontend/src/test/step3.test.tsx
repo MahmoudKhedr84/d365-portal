@@ -121,14 +121,20 @@ describe('entity check', () => {
       { key: 'vendors', label: 'Vendors', kind: 'lookup', found: true, entitySet: 'VendorsV2', idField: 'VendorAccountNumber',
         nameField: 'VendorOrganizationName', companySpecific: true, fieldsConfirmed: true, tried: ['VendorsV3', 'VendorsV2'], sampleFields: [], error: null },
       { key: 'cases', label: 'Cases', kind: 'transaction', found: false, entitySet: null, idField: null, nameField: null,
-        companySpecific: null, fieldsConfirmed: false, tried: ['CaseDetails'], sampleFields: [], error: 'not found' },
+        companySpecific: null, fieldsConfirmed: false, tried: ['CaseDetails'], sampleFields: [], error: 'not found', suggestions: ['CaseDetailsV2'] },
     ];
-    const scope = { key: ['x'], checkEntities: vi.fn(async () => rows) } as unknown as AdminScope;
+    const scope = { key: ['x'], checkEntities: vi.fn(async () => rows), findEntitySets: vi.fn(async () => ['CaseDetailsV2', 'CaseLogs']) } as unknown as AdminScope;
     wrap((async () => null) as unknown as ApiRequest, <EntityCheckPanel scope={scope} />);
     await userEvent.click(screen.getByRole('button', { name: 'Check D365 entities' }));
     expect(await screen.findByText('VendorsV2')).toBeInTheDocument();
     expect(screen.getByText('tried CaseDetails')).toBeInTheDocument();
     expect(screen.getByText('Missing')).toBeInTheDocument();
     expect(screen.getByText(/1 entity was not found/)).toBeInTheDocument();
+    expect(screen.getByText('Similar: CaseDetailsV2')).toBeInTheDocument();
+
+    await userEvent.type(screen.getByPlaceholderText('e.g. Case'), 'Case');
+    await userEvent.click(screen.getByRole('button', { name: 'Search' }));
+    expect(await screen.findByText('CaseLogs')).toBeInTheDocument();
+    expect(scope.findEntitySets).toHaveBeenCalledWith('Case');
   });
 });

@@ -58,16 +58,20 @@ public static class LookupCatalog
         All.FirstOrDefault(d => string.Equals(d.Key, key, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>Transaction entities used by steps 4–8; probed by the entity check so names can be confirmed up front.</summary>
-    public static readonly IReadOnlyList<(string Key, string Label, string[] Candidates)> Transactions = new[]
+    public static readonly IReadOnlyList<(string Key, string Label, string[] Candidates, string Keyword)> Transactions = new[]
     {
-        ("purchaseRequisitionHeaders", "Purchase requisition headers", new[] { "PurchaseRequisitionHeaders" }),
-        ("purchaseRequisitionLines", "Purchase requisition lines", new[] { "PurchaseRequisitionLines", "PurchaseRequisitionLinesV2" }),
-        ("purchaseOrderHeaders", "Purchase order headers", new[] { "PurchaseOrderHeadersV2", "PurchaseOrderHeaders" }),
-        ("purchaseOrderLines", "Purchase order lines", new[] { "PurchaseOrderLinesV2", "PurchaseOrderLines" }),
-        ("cases", "Cases", new[] { "CaseDetails", "Cases", "CaseDetailBases" }),
-        ("ledgerJournalHeaders", "General journal headers", new[] { "LedgerJournalHeaders" }),
-        ("ledgerJournalLines", "General journal lines", new[] { "LedgerJournalLines", "GeneralJournalLines" }),
+        ("purchaseRequisitionHeaders", "Purchase requisition headers", new[] { "PurchaseRequisitionHeaders" }, "PurchaseRequisition"),
+        ("purchaseRequisitionLines", "Purchase requisition lines", new[] { "PurchaseRequisitionLines", "PurchaseRequisitionLinesV2" }, "PurchaseRequisition"),
+        ("purchaseOrderHeaders", "Purchase order headers", new[] { "PurchaseOrderHeadersV2", "PurchaseOrderHeaders" }, "PurchaseOrder"),
+        ("purchaseOrderLines", "Purchase order lines", new[] { "PurchaseOrderLinesV2", "PurchaseOrderLines" }, "PurchaseOrder"),
+        ("cases", "Cases", new[] { "CaseDetails", "Cases", "CaseDetailBases" }, "Case"),
+        ("ledgerJournalHeaders", "General journal headers", new[] { "LedgerJournalHeaders" }, "LedgerJournal"),
+        ("ledgerJournalLines", "General journal lines", new[] { "LedgerJournalLines", "GeneralJournalLines" }, "LedgerJournal"),
     };
+
+    /// <summary>Search keyword for suggestions when none of a lookup's candidates exist (e.g. "VendorsV3" → "Vendor").</summary>
+    public static string KeywordFor(LookupDefinition def) =>
+        System.Text.RegularExpressions.Regex.Replace(def.EntitySets[0], "(V\\d+)?$", "").TrimEnd('s');
 }
 
 public sealed record LookupItem(string Id, string Name, IReadOnlyDictionary<string, string?>? Extra);
@@ -94,7 +98,8 @@ public sealed record EntityCheckRow(
     bool FieldsConfirmed,
     IReadOnlyList<string> Tried,
     IReadOnlyList<string> SampleFields,
-    string? Error);
+    string? Error,
+    IReadOnlyList<string>? Suggestions = null);
 
 public sealed class LookupService(ID365ODataClient odata, IMemoryCache cache)
 {
@@ -186,10 +191,11 @@ public sealed class LookupService(ID365ODataClient odata, IMemoryCache cache)
             catch (D365Exception ex)
             {
                 rows.Add(new EntityCheckRow(def.Key, def.Label, "lookup", false, null, null, null, null, false,
-                    def.EntitySets, Array.Empty<string>(), ex.Message));
+                    def.EntitySets, Array.Empty<string>(), ex.Message,
+                    await SuggestAsync(s, LookupCatalog.KeywordFor(def), ct)));
             }
         }
-        foreach (var (key, label, candidates) in LookupCatalog.Transactions)
+        foreach (var (key, label, candidates, keyword) in LookupCatalog.Transactions)
         {
             try
             {
@@ -200,10 +206,36 @@ public sealed class LookupService(ID365ODataClient odata, IMemoryCache cache)
             catch (D365Exception ex)
             {
                 rows.Add(new EntityCheckRow(key, label, "transaction", false, null, null, null, null, false,
-                    candidates, Array.Empty<string>(), ex.Message));
+                    candidates, Array.Empty<string>(), ex.Message, await SuggestAsync(s, keyword, ct)));
             }
         }
         return rows;
+    }
+
+    /// <summary>Entity sets whose name contains <paramref name="search"/> (service document cached per environment).</summary>
+    public async Task<IReadOnlyList<string>> FindEntitySetsAsync(D365ConnectionSettings s, string search, int max, CancellationToken ct)
+    {
+        var key = $"entitysets:{s.EnvironmentUrl}";
+        if (!cache.TryGetValue<IReadOnlyList<string>>(key, out var names) || names is null)
+        {
+            names = await odata.GetEntitySetNamesAsync(s, ct);
+            cache.Set(key, names, ResolutionTtl);
+        }
+        var q = search.Trim();
+        if (q.Length == 0) return Array.Empty<string>();
+        return names
+            .Where(n => n.Contains(q, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(n => n.StartsWith(q, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+            .ThenBy(n => n.Length)
+            .ThenBy(n => n, StringComparer.Ordinal)
+            .Take(Math.Clamp(max, 1, 200))
+            .ToList();
+    }
+
+    private async Task<IReadOnlyList<string>> SuggestAsync(D365ConnectionSettings s, string keyword, CancellationToken ct)
+    {
+        try { return await FindEntitySetsAsync(s, keyword, 15, ct); }
+        catch (D365Exception) { return Array.Empty<string>(); }
     }
 
     /// <summary>GET {set}?$top=1 for each candidate; 404 → next. Returns the set and a sample row (if any).</summary>

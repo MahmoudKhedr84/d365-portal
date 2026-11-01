@@ -175,6 +175,32 @@ public class ODataClientTests
         (await act.Should().ThrowAsync<D365Exception>()).Which.Code.Should().Be(D365ErrorCodes.NoCompany);
     }
 
+    [Fact]
+    public async Task Entity_sets_are_searched_from_the_service_document()
+    {
+        var (client, handler, _, _) = Create((req, _) => req.RequestUri!.AbsolutePath == "/data/"
+            ? Ok("""{"value":[{"name":"CaseDetailsV2","kind":"EntitySet","url":"CaseDetailsV2"},{"name":"CaseCategoryHierarchyDetails","kind":"EntitySet"},{"name":"Vendors","kind":"EntitySet"},{"name":"CaseFn","kind":"FunctionImport"}]}""")
+            : new HttpResponseMessage(HttpStatusCode.NotFound));
+        var lookups = new LookupService(client, new MemoryCache(new MemoryCacheOptions()));
+        var s = Settings();
+
+        var found = await lookups.FindEntitySetsAsync(s, "case", 10, default);
+        found.Should().Equal("CaseDetailsV2", "CaseCategoryHierarchyDetails");
+        await lookups.FindEntitySetsAsync(s, "vend", 10, default);
+        handler.Calls.Should().Be(1); // cached per environment
+    }
+
+    [Fact]
+    public async Task Missing_entities_get_name_suggestions()
+    {
+        var (client, _, _, _) = Create((req, _) => req.RequestUri!.AbsolutePath == "/data/"
+            ? Ok("""{"value":[{"name":"CaseDetailsV2","kind":"EntitySet"}]}""")
+            : new HttpResponseMessage(HttpStatusCode.NotFound));
+        var rows = await new LookupService(client, new MemoryCache(new MemoryCacheOptions())).CheckAsync(Settings(), "USMF", default);
+        rows.Single(r => r.Key == "cases").Suggestions.Should().Equal("CaseDetailsV2");
+        LookupCatalog.KeywordFor(LookupCatalog.Find("vendors")!).Should().Be("Vendor");
+    }
+
     // ---------------- stubs ----------------
 
     private sealed class Handler(Func<HttpRequestMessage, int, HttpResponseMessage> respond) : HttpMessageHandler
