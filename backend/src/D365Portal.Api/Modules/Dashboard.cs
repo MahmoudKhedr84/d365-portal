@@ -143,7 +143,7 @@ public sealed class DashboardService(
             .GroupBy(c => c.Entity).ToDictionary(g => g.Key, g => g.Count());
         var since7 = today.AddDays(-6);
         var failed = rows.Count(r => !r.Success && r.Action.StartsWith("D365.") && DateOnly.FromDateTime(r.Timestamp.UtcDateTime) >= since7);
-        var recent = creates.Take(8)
+        var recent = creates.OrderByDescending(c => c.Timestamp).Take(8)
             .Select(c => new ActivityDto(c.Timestamp, c.UserEmail, c.Company, c.Entity, c.RequestSummary)).ToList();
         return (perDay, byType, failed, recent);
     }

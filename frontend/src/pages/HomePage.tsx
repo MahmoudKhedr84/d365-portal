@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import type { NavItem } from '@/navigation';
 import { ReferenceDataCard } from '@/components/ReferenceDataCard';
+import { Dashboard } from '@/components/dashboard/Dashboard';
+import { useCurrentMembership } from '@/state/sessionStore';
 
 const useStyles = makeStyles({
   header: { marginBottom: '20px', display: 'flex', flexDirection: 'column', rowGap: '4px' },
@@ -29,6 +31,20 @@ export function HomePage({
 }) {
   const { t } = useTranslation();
   const s = useStyles();
+  const membership = useCurrentMembership();
+  // With a company selected the home page is the dashboard; otherwise (e.g. super-admin only) the tiles.
+  if (tenantName && company) {
+    return (
+      <>
+        <div className={s.header}>
+          <Title2 as="h1">{t('home.greeting', { name: userName })}</Title2>
+          <Body1>{t('home.subtitle', { tenant: tenantName, company })}</Body1>
+        </div>
+        <Dashboard isAdmin={membership?.role === 'TenantAdmin'} />
+        <ReferenceDataCard company={company} />
+      </>
+    );
+  }
   return (
     <>
       <div className={s.header}>
@@ -52,7 +68,6 @@ export function HomePage({
           </Link>
         ))}
       </div>
-      {tenantName && company && <ReferenceDataCard company={company} />}
     </>
   );
 }
