@@ -30,11 +30,11 @@ export const NAV_ITEMS: NavItem[] = [
   { path: '/', labelKey: 'nav.home', icon: <Home20Regular />, audience: 'tenantUser', section: 'workspaces' },
   { path: '/purchase-requisitions', labelKey: 'nav.purchaseRequisitions', icon: <ClipboardTask20Regular />, audience: 'tenantUser', section: 'workspaces' },
   { path: '/purchase-orders', labelKey: 'nav.purchaseOrders', icon: <Cart20Regular />, audience: 'tenantUser', section: 'workspaces' },
-  { path: '/cases', labelKey: 'nav.cases', icon: <DocumentBulletList20Regular />, audience: 'tenantUser', section: 'workspaces', step: 6 },
-  { path: '/general-journals', labelKey: 'nav.generalJournals', icon: <BookOpen20Regular />, audience: 'tenantUser', section: 'workspaces', step: 7 },
+  { path: '/cases', labelKey: 'nav.cases', icon: <DocumentBulletList20Regular />, audience: 'tenantUser', section: 'workspaces' },
+  { path: '/general-journals', labelKey: 'nav.generalJournals', icon: <BookOpen20Regular />, audience: 'tenantUser', section: 'workspaces' },
   { path: '/admin/users', labelKey: 'nav.users', icon: <People20Regular />, audience: 'tenantAdmin', section: 'administration' },
   { path: '/admin/connection', labelKey: 'nav.d365Connection', icon: <PlugConnected20Regular />, audience: 'tenantAdmin', section: 'administration' },
-  { path: '/admin/audit', labelKey: 'nav.auditLog', icon: <History20Regular />, audience: 'tenantAdmin', section: 'administration', step: 8 },
+  { path: '/admin/audit', labelKey: 'nav.auditLog', icon: <History20Regular />, audience: 'tenantAdmin', section: 'administration' },
   { path: '/platform/tenants', labelKey: 'nav.tenants', icon: <Building20Regular />, audience: 'superAdmin', section: 'platform' },
 ];
 

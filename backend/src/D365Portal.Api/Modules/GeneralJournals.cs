@@ -234,8 +234,14 @@ public sealed class GeneralJournalService(
             Num(r, "LineNumber"), Date(r, "TransDate"), Str(r, "Voucher"), Str(r, "AccountType"), Str(r, "AccountDisplayValue"),
             Str(r, "Text"), Num(r, "DebitAmount"), Num(r, "CreditAmount"), Str(r, "CurrencyCode"),
             Str(r, "OffsetAccountType"), Str(r, "OffsetAccountDisplayValue"))).ToList();
+        // A line with an offset account balances itself, so it counts on both sides.
         var totals = dtos.GroupBy(l => l.Currency ?? string.Empty)
-            .Select(g => new JournalTotalDto(g.Key, g.Sum(l => l.Debit), g.Sum(l => l.Credit), g.Sum(l => l.Debit - l.Credit)))
+            .Select(g =>
+            {
+                var debit = g.Sum(l => l.Debit + (string.IsNullOrEmpty(l.OffsetAccount) ? 0 : l.Credit));
+                var credit = g.Sum(l => l.Credit + (string.IsNullOrEmpty(l.OffsetAccount) ? 0 : l.Debit));
+                return new JournalTotalDto(g.Key, debit, credit, debit - credit);
+            })
             .ToList();
 
         return new JournalDetailDto(Str(h, "JournalBatchNumber") ?? number, company, Str(h, "JournalName"), Str(h, "Description"),

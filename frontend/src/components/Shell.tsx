@@ -7,7 +7,9 @@ import { TopBar } from './TopBar';
 import { LeftNav } from './LeftNav';
 import { HomePage } from '@/pages/HomePage';
 import { PlaceholderPage } from '@/pages/PlaceholderPage';
-import { AdminConnectionPage, AdminUsersPage } from '@/pages/admin/AdminPages';
+import { AdminAuditPage, AdminConnectionPage, AdminUsersPage } from '@/pages/admin/AdminPages';
+import { CaseCreatePage, CaseDetailPage, CasesPage } from '@/pages/cases/CasesPages';
+import { JournalCreatePage, JournalDetailPage, JournalsPage } from '@/pages/journals/JournalPages';
 import { TenantDetailPage } from '@/pages/platform/TenantDetailPage';
 import { TenantsPage } from '@/pages/platform/TenantsPage';
 import { PurchaseOrdersPage } from '@/pages/purchaseOrders/PurchaseOrdersPage';
@@ -118,12 +120,19 @@ export function Shell({ onSignOut }: { onSignOut: () => void }) {
                 <Route path="/purchase-orders" element={<PurchaseOrdersPage />} />
                 <Route path="/purchase-orders/new" element={<PurchaseOrderCreatePage />} />
                 <Route path="/purchase-orders/:number" element={<PurchaseOrderDetailPage />} />
+                <Route path="/cases" element={<CasesPage />} />
+                <Route path="/cases/new" element={<CaseCreatePage />} />
+                <Route path="/cases/:caseId" element={<CaseDetailPage />} />
+                <Route path="/general-journals" element={<JournalsPage />} />
+                <Route path="/general-journals/new" element={<JournalCreatePage />} />
+                <Route path="/general-journals/:number" element={<JournalDetailPage />} />
               </>
             )}
             {viewer.role === 'TenantAdmin' && (
               <>
                 <Route path="/admin/users" element={<AdminUsersPage />} />
                 <Route path="/admin/connection" element={<AdminConnectionPage />} />
+                <Route path="/admin/audit" element={<AdminAuditPage />} />
               </>
             )}
             {me.isSuperAdmin && (

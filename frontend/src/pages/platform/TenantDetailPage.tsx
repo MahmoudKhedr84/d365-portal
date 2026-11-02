@@ -31,6 +31,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { deleteTenant, getTenant, platformTenantScope, updateTenant, type Tenant } from '@/api/admin';
 import { useApi } from '@/api/ApiProvider';
+import { AuditLogPanel } from '@/components/admin/AuditLogPanel';
 import { ConnectionPanel } from '@/components/admin/ConnectionPanel';
 import { UsersPanel } from '@/components/admin/UsersPanel';
 import { errorMessage, useNotify } from '@/components/notify';
@@ -196,6 +197,7 @@ export function TenantDetailPage() {
 
       <ConnectionPanel scope={scope} />
       <UsersPanel scope={scope} title="Users and tenant admins" />
+      <AuditLogPanel base={`/platform/tenants/${t.id}`} tenantScoped={false} queryKey={scope.key} />
       <DeleteTenantCard tenant={t} />
     </div>
   );

@@ -13,11 +13,16 @@ Multi-tenant web app for business users to create **Purchase requisitions, Purch
 
 | Step | Scope | Status |
 |---|---|---|
-| 1 | Skeleton, DB schema + migrations, Microsoft login, tenant/user resolution | **Done** |
-| 2 | Super-admin + tenant-admin screens, D365 connection + Test connection | Next |
-| 3 | D365 OData client, company switcher, lookups | |
-| 4–7 | Purchase requisitions, Purchase orders, Cases, General journals | |
-| 8 | Audit log viewer, remaining tests, hardening | |
+| 1 | Skeleton, DB schema + migrations, Microsoft login, tenant/user resolution | Done |
+| 2 | Super-admin + tenant-admin screens, D365 connection + Test connection | Done |
+| 3 | D365 OData client, company switcher, lookups, entity check, delete tenant | Done |
+| 4 | Purchase requisitions | Done (see open item below) |
+| 5 | Purchase orders | Done |
+| 6 | Cases → Quality management **CAPA cases** (no standard customer-service case entity is exposed) | Done |
+| 7 | General journals with running totals | Done |
+| 8 | Audit log viewer (tenant admin + super-admin), tests | Done |
+
+Per-step notes (entity/field names, what is unconfirmed, manual setup): `docs/step-*-summary.md`.
 
 ## Architecture
 
@@ -181,11 +186,25 @@ cd backend && dotnet test          # tenant isolation, user binding, API auth/te
 cd frontend && npm test            # config, API client, tenant choice, nav visibility, session gate flows
 ```
 
-## API (step 1)
+## API
+
+All D365 document endpoints require a tenant (`X-Tenant-Id`) and work in the request's company (`X-Company`, validated against the user's allowed companies).
 
 | Method | Path | Policy | Purpose |
 |---|---|---|---|
 | POST | `/api/session` | SignedIn | Resolve account → tenants, bind first sign-in, audit login |
 | GET | `/api/me` | SignedIn | Same, without side effects |
-| GET | `/api/tenant/current` | TenantUser | Selected tenant + caller role/companies |
+| GET | `/api/tenant/current` | TenantUser | Selected tenant, role, companies and current company |
+| PUT | `/api/session/company` | TenantUser | Switch working company (persisted) |
+| GET | `/api/lookups`, `/api/lookups/{key}?search=` | TenantUser | Live D365 reference data (vendors, products, variants, sites, warehouses, accounts, …) |
+| GET/POST | `/api/purchase-requisitions[/{number}]` | TenantUser | `PurchaseRequisitionHeaders` / `PurchaseRequisitionLines` |
+| GET/POST | `/api/purchase-orders[/{number}]` | TenantUser | `PurchaseOrderHeadersV2` / `PurchaseOrderLinesV2` |
+| GET/POST | `/api/cases[/{caseId}]` | TenantUser | `CAPACases` |
+| GET/POST | `/api/general-journals[/{number}]` | TenantUser | `LedgerJournalHeaders` / `LedgerJournalLines` |
+| GET | `/api/admin/audit` | TenantAdmin | Audit log of the tenant |
+| GET/PUT/POST | `/api/admin/connection[/test]`, `/api/admin/d365/entities`, `/api/admin/d365/entity-sets` | TenantAdmin | D365 connection, test, entity check |
+| GET/POST/PATCH | `/api/admin/users[/{id}]` | TenantAdmin | Users and company access |
+| * | `/api/platform/tenants/...` | SuperAdmin | Tenants (incl. `DELETE ?confirm=<slug>`), their connection, users, audit |
 | GET | `/health`, `/health/db` | anonymous | Liveness / DB check |
+
+Documents are created as header → all lines in one `$batch` changeset; if the lines fail the empty header is deleted and D365's Infolog message is returned. Posting, confirming and workflow submission are done in D365 (not available through standard OData).

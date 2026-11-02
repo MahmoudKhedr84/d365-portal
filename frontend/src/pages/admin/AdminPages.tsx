@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { Body1, Title2, makeStyles } from '@fluentui/react-components';
 import { tenantAdminScope } from '@/api/admin';
 import { useApi } from '@/api/ApiProvider';
+import { AuditLogPanel } from '@/components/admin/AuditLogPanel';
 import { ConnectionPanel } from '@/components/admin/ConnectionPanel';
 import { UsersPanel } from '@/components/admin/UsersPanel';
 import { useCurrentMembership } from '@/state/sessionStore';
@@ -38,6 +39,17 @@ export function AdminConnectionPage() {
     <div className={s.page}>
       <Title2 as="h1">D365 connection</Title2>
       <ConnectionPanel scope={scope} />
+    </div>
+  );
+}
+
+export function AdminAuditPage() {
+  const s = useStyles();
+  const { scope } = useTenantScope();
+  return (
+    <div className={s.page}>
+      <Title2 as="h1">Audit log</Title2>
+      <AuditLogPanel base="/admin" tenantScoped queryKey={scope.key} />
     </div>
   );
 }
