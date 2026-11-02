@@ -16,14 +16,12 @@ import {
   MessageBarTitle,
   Option,
   Subtitle2,
-  Tab,
-  TabList,
   Textarea,
   Title2,
   makeStyles,
   tokens,
 } from '@fluentui/react-components';
-import { Add20Regular, Delete20Regular, Send20Regular } from '@fluentui/react-icons';
+import { Add20Regular, Send20Regular } from '@fluentui/react-icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { useApi } from '@/api/ApiProvider';
@@ -39,6 +37,7 @@ import {
   type PrLineForm,
 } from '@/api/purchaseRequisitions';
 import { LookupCombobox } from '@/components/LookupCombobox';
+import { ProcurementLineEditor } from '@/components/procurement/ProcurementLineEditor';
 import { errorMessage, fieldErrors, useNotify } from '@/components/notify';
 import { useSessionStore } from '@/state/sessionStore';
 import { formatAmount } from './shared';
@@ -85,10 +84,6 @@ function saveRequester(tenantId: string | null, v: string) {
   try { localStorage.setItem(requesterKey(tenantId), v); } catch { /* storage unavailable */ }
 }
 
-const isProductMaster = (extra?: Record<string, string | null> | null) =>
-  !!extra && (extra.ProductSubType === 'ProductMaster' || !!extra.ProductDimensionGroupName);
-
-const noVariant = { variant: '', configuration: '', size: '', color: '', style: '', version: '' };
 
 type LineErrors = Record<string, string>;
 
@@ -192,69 +187,11 @@ export function PurchaseRequisitionCreatePage() {
       <Card className={s.card}>
         <Subtitle2 as="h2">Lines</Subtitle2>
         {errors.lines && <Caption1 style={{ color: tokens.colorPaletteRedForeground1 }}>{errors.lines}</Caption1>}
-        {lines.map((l, i) => {
-          const le = lineErrors[i] ?? {};
-          return (
-            <div key={i} className={s.line} role="group" aria-label={`Line ${i + 1}`}>
-              <div className={s.lineHead}>
-                <strong>Line {i + 1}</strong>
-                <TabList size="small" selectedValue={l.kind}
-                  onTabSelect={(_, d) => setLine(i, { kind: d.value as PrLineForm['kind'], itemNumber: '', procurementCategory: '' })}>
-                  <Tab value="item">Item</Tab>
-                  <Tab value="category">Category</Tab>
-                </TabList>
-                <span className={s.spacer} />
-                <Button appearance="subtle" icon={<Delete20Regular />} aria-label={`Remove line ${i + 1}`} disabled={lines.length === 1}
-                  onClick={() => { setLines((ls) => ls.filter((_, idx) => idx !== i)); setLineErrors((le2) => le2.filter((_, idx) => idx !== i)); }} />
-              </div>
-              <div className={s.lineGrid}>
-                {l.kind === 'item' ? (
-                  <LookupCombobox lookup="products" label="Item" required value={l.itemNumber || null} validationMessage={le.itemNumber}
-                    disabledNote={(it) => (it.extra?.OnHold === 'Yes' ? 'On hold for purchasing' : null)}
-                    onChange={(id, item) => setLine(i, {
-                      ...noVariant,
-                      itemNumber: id ?? '',
-                      description: item?.name ?? l.description,
-                      unit: item?.extra?.PurchaseUnitSymbol || l.unit,
-                      needsVariant: isProductMaster(item?.extra),
-                      onHold: item?.extra?.OnHold === 'Yes',
-                    })} />
-                ) : (
-                  <LookupCombobox lookup="procurementCategories" label="Procurement category" required value={l.procurementCategory || null}
-                    validationMessage={le.procurementCategory} onChange={(id) => setLine(i, { procurementCategory: id ?? '' })} />
-                )}
-                {l.kind === 'item' && l.needsVariant && l.itemNumber && (
-                  <LookupCombobox key={`variant-${l.itemNumber}`} lookup="productVariants" label="Variant (product dimensions)" required
-                    value={l.variant || null} filters={{ item: l.itemNumber }} validationMessage={le.variant}
-                    onChange={(id, v) => setLine(i, {
-                      variant: id ?? '',
-                      configuration: v?.extra?.ProductConfigurationId ?? '',
-                      size: v?.extra?.ProductSizeId ?? '',
-                      color: v?.extra?.ProductColorId ?? '',
-                      style: v?.extra?.ProductStyleId ?? '',
-                      version: v?.extra?.ProductVersionId ?? '',
-                    })} />
-                )}
-                <Field className={s.wide} label="Description" required={l.kind === 'category'} validationMessage={le.description}>
-                  <Input value={l.description ?? ''} maxLength={60} onChange={(_, d) => setLine(i, { description: d.value })} />
-                </Field>
-                <Field label="Quantity" required validationMessage={le.quantity}>
-                  <Input type="number" min={0} step="any" value={String(l.quantity ?? '')} onChange={(_, d) => setLine(i, { quantity: d.value })} />
-                </Field>
-                <LookupCombobox lookup="units" label="Unit" value={l.unit || null} onChange={(id) => setLine(i, { unit: id ?? '' })} />
-                <Field label="Unit price" validationMessage={le.unitPrice}>
-                  <Input type="number" min={0} step="any" value={String(l.unitPrice ?? '')} onChange={(_, d) => setLine(i, { unitPrice: d.value })} />
-                </Field>
-                <LookupCombobox lookup="currencies" label="Currency" value={l.currency || null} onChange={(id) => setLine(i, { currency: id ?? '' })} />
-                <LookupCombobox lookup="vendors" label="Vendor" value={l.vendor || null}
-                  onChange={(id, item) => setLine(i, { vendor: id ?? '', currency: l.currency || item?.extra?.CurrencyCode || '' })} />
-                <LookupCombobox lookup="sites" label="Site" value={l.site || null} onChange={(id) => setLine(i, { site: id ?? '', warehouse: '' })} />
-                <LookupCombobox lookup="warehouses" label="Warehouse" value={l.warehouse || null} filters={{ site: l.site || undefined }}
-                  onChange={(id) => setLine(i, { warehouse: id ?? '' })} />
-              </div>
-            </div>
-          );
-        })}
+        {lines.map((l, i) => (
+          <ProcurementLineEditor key={i} line={l} index={i} errors={lineErrors[i] ?? {}} showVendorAndCurrency
+            onChange={(patch) => setLine(i, patch)} canRemove={lines.length > 1}
+            onRemove={() => { setLines((ls) => ls.filter((_, idx) => idx !== i)); setLineErrors((le) => le.filter((_, idx) => idx !== i)); }} />
+        ))}
         <div className={s.footer}>
           <Button icon={<Add20Regular />} onClick={() => setLines((ls) => [...ls, emptyLine()])} disabled={lines.length >= 100}>Add line</Button>
           <span className={s.spacer} />

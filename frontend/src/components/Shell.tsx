@@ -10,6 +10,9 @@ import { PlaceholderPage } from '@/pages/PlaceholderPage';
 import { AdminConnectionPage, AdminUsersPage } from '@/pages/admin/AdminPages';
 import { TenantDetailPage } from '@/pages/platform/TenantDetailPage';
 import { TenantsPage } from '@/pages/platform/TenantsPage';
+import { PurchaseOrdersPage } from '@/pages/purchaseOrders/PurchaseOrdersPage';
+import { PurchaseOrderCreatePage } from '@/pages/purchaseOrders/PurchaseOrderCreatePage';
+import { PurchaseOrderDetailPage } from '@/pages/purchaseOrders/PurchaseOrderDetailPage';
 import { PurchaseRequisitionsPage } from '@/pages/purchaseRequisitions/PurchaseRequisitionsPage';
 import { PurchaseRequisitionCreatePage } from '@/pages/purchaseRequisitions/PurchaseRequisitionCreatePage';
 import { PurchaseRequisitionDetailPage } from '@/pages/purchaseRequisitions/PurchaseRequisitionDetailPage';
@@ -112,6 +115,9 @@ export function Shell({ onSignOut }: { onSignOut: () => void }) {
                 <Route path="/purchase-requisitions" element={<PurchaseRequisitionsPage />} />
                 <Route path="/purchase-requisitions/new" element={<PurchaseRequisitionCreatePage />} />
                 <Route path="/purchase-requisitions/:number" element={<PurchaseRequisitionDetailPage />} />
+                <Route path="/purchase-orders" element={<PurchaseOrdersPage />} />
+                <Route path="/purchase-orders/new" element={<PurchaseOrderCreatePage />} />
+                <Route path="/purchase-orders/:number" element={<PurchaseOrderDetailPage />} />
               </>
             )}
             {viewer.role === 'TenantAdmin' && (
