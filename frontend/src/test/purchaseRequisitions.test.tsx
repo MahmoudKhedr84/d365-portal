@@ -119,7 +119,7 @@ describe('purchase requisition pages', () => {
     expect(calls.some((c) => c.method === 'POST')).toBe(false);
 
     await userEvent.type(screen.getByRole('textbox', { name: /^Name/ }), 'Office supplies');
-    const item = within(screen.getByRole('group', { name: 'Line 1' })).getByRole('combobox', { name: /Item/ });
+    const item = within(screen.getByRole('group', { name: 'Line 1' })).getByRole('combobox', { name: /^Item\b(?! sales)/ });
     await userEvent.click(item);
     await userEvent.type(item, 'A0');
     expect(await screen.findByRole('option', { name: /A0002.*On hold/ }, { timeout: 3000 })).toHaveAttribute('aria-disabled', 'true');

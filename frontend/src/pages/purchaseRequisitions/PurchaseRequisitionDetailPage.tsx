@@ -111,6 +111,7 @@ export function PurchaseRequisitionDetailPage() {
                 <TableHeaderCell className={s.num}>Amount</TableHeaderCell>
                 <TableHeaderCell>Vendor</TableHeaderCell>
                 <TableHeaderCell>Site / WH</TableHeaderCell>
+                <TableHeaderCell>Tax group / item tax</TableHeaderCell>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -129,6 +130,7 @@ export function PurchaseRequisitionDetailPage() {
                   <TableCell className={s.num}>{formatAmount(l.lineAmount, l.currency)}</TableCell>
                   <TableCell className={s.mono}>{l.vendor}</TableCell>
                   <TableCell className={s.mono}>{[l.site, l.warehouse].filter(Boolean).join(' / ')}</TableCell>
+                  <TableCell className={s.mono}>{[l.salesTaxGroup, l.itemSalesTaxGroup].filter(Boolean).join(' / ')}</TableCell>
                 </TableRow>
               ))}
             </TableBody>

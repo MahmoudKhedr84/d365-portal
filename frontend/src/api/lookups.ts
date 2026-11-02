@@ -28,7 +28,10 @@ export type LookupKey =
   | 'capaCategories'
   | 'capaTypes'
   | 'capaSources'
-  | 'units';
+  | 'units'
+  | 'taxGroups'
+  | 'taxItemGroups'
+  | 'bankAccounts';
 
 export function lookupUrl(key: string, search: string, filters: Record<string, string | undefined> = {}, top = 25): string {
   const qs = new URLSearchParams();

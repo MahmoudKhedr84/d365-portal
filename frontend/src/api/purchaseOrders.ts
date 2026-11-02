@@ -39,6 +39,8 @@ export const poLineSchema = z.object({
   warehouse: z.string().nullable(),
   requestedDeliveryDate: date,
   status: z.string().nullable(),
+  salesTaxGroup: z.string().nullable().optional(),
+  itemSalesTaxGroup: z.string().nullable().optional(),
 });
 export type PoLine = z.infer<typeof poLineSchema>;
 
@@ -56,6 +58,7 @@ export const poDetailSchema = z.object({
   warehouse: z.string().nullable(),
   vendorReference: z.string().nullable(),
   requester: z.string().nullable(),
+  salesTaxGroup: z.string().nullable().optional(),
   lines: z.array(poLineSchema),
   total: z.number(),
   d365Url: z.string(),
@@ -71,6 +74,9 @@ export const poFormSchema = z.object({
   warehouse: z.string().optional(),
   vendorReference: z.string().max(60, 'At most 60 characters.').optional(),
   requester: z.string().optional(),
+  salesTaxGroup: z.string().optional(),
+  /** Only when the company's PO number sequence is manual. */
+  purchaseOrderNumber: z.string().trim().max(20, 'At most 20 characters.').optional(),
 });
 export type PoForm = z.infer<typeof poFormSchema>;
 
@@ -85,6 +91,8 @@ export function toPoCreateBody(form: PoForm, lines: PrLineForm[]) {
     warehouse: blank(form.warehouse),
     vendorReference: blank(form.vendorReference),
     requester: blank(form.requester),
+    salesTaxGroup: blank(form.salesTaxGroup),
+    purchaseOrderNumber: blank(form.purchaseOrderNumber),
     lines: lines.map((l) => {
       const item = l.kind === 'item';
       return {
@@ -102,6 +110,8 @@ export function toPoCreateBody(form: PoForm, lines: PrLineForm[]) {
         color: item ? blank(l.color) : null,
         style: item ? blank(l.style) : null,
         version: item ? blank(l.version) : null,
+        salesTaxGroup: blank(l.salesTaxGroup),
+        itemSalesTaxGroup: blank(l.itemSalesTaxGroup),
       };
     }),
   };

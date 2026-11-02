@@ -37,6 +37,8 @@ export const prLineSchema = z.object({
   requestedDate: date,
   status: z.string().nullable(),
   variant: z.string().nullable().optional(),
+  salesTaxGroup: z.string().nullable().optional(),
+  itemSalesTaxGroup: z.string().nullable().optional(),
 });
 export type PrLine = z.infer<typeof prLineSchema>;
 
@@ -79,6 +81,8 @@ export const prLineFormSchema = z
     style: z.string().optional(),
     version: z.string().optional(),
     onHold: z.boolean().optional(),
+    salesTaxGroup: z.string().optional(),
+    itemSalesTaxGroup: z.string().optional(),
   })
   .superRefine((l, ctx) => {
     if (l.kind === 'item' && !l.itemNumber) ctx.addIssue({ code: 'custom', path: ['itemNumber'], message: 'Select an item.' });
@@ -148,6 +152,8 @@ export function toCreateBody(form: PrForm, lines: PrLineForm[]) {
       color: l.kind === 'item' ? blank(l.color) : null,
       style: l.kind === 'item' ? blank(l.style) : null,
       version: l.kind === 'item' ? blank(l.version) : null,
+      salesTaxGroup: blank(l.salesTaxGroup),
+      itemSalesTaxGroup: blank(l.itemSalesTaxGroup),
     })),
   };
 }

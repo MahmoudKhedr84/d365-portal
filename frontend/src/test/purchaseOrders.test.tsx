@@ -5,7 +5,7 @@ import { FluentProvider, webLightTheme } from '@fluentui/react-components';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { ApiProvider } from '@/api/ApiProvider';
-import type { ApiRequest } from '@/api/client';
+import { ApiError, type ApiRequest } from '@/api/client';
 import { toPoCreateBody, type PoDetail } from '@/api/purchaseOrders';
 import { AppToaster } from '@/components/notify';
 import { PurchaseOrderCreatePage } from '@/pages/purchaseOrders/PurchaseOrderCreatePage';
@@ -90,6 +90,37 @@ describe('purchase orders', () => {
     expect(screen.getByRole('link', { name: /Open in D365/ })).toHaveAttribute('href', detail.d365Url);
   });
 
+  it('asks for a PO number when D365 numbering is manual, and sends tax groups', async () => {
+    let posts = 0;
+    const calls = renderAt('/purchase-orders/new', (c) => {
+      if (c.path.startsWith('/lookups/vendors')) return [{ id: 'V1', name: 'Fabrikam', extra: { CurrencyCode: 'SAR', SalesTaxGroupCode: 'DOM' } }];
+      if (c.path.startsWith('/lookups/products')) return [{ id: 'A0001', name: 'Filter', extra: { PurchaseUnitSymbol: 'ea', PurchaseSalesTaxItemGroupCode: 'VAT15' } }];
+      if (c.path.startsWith('/lookups')) return [];
+      if (c.method === 'POST') {
+        posts++;
+        if (posts === 1) throw new ApiError(422, 'po_number_required', 'D365 did not assign a purchase order number in WFQ.');
+        return detail;
+      }
+      return detail;
+    });
+    await userEvent.click(screen.getByRole('combobox', { name: /^Vendor/ }));
+    await userEvent.click(await screen.findByRole('option', { name: /V1/ }, { timeout: 3000 }));
+    const item = within(screen.getByRole('group', { name: 'Line 1' })).getByRole('combobox', { name: /^Item\b(?! sales)/ });
+    await userEvent.click(item);
+    await userEvent.click(await screen.findByRole('option', { name: /A0001/ }, { timeout: 3000 }));
+    await userEvent.click(screen.getByRole('button', { name: 'Create purchase order' }));
+
+    expect(await screen.findByText('Enter the purchase order number (numbering is manual in this company).')).toBeInTheDocument();
+    expect(calls.find((c) => c.method === 'POST')!.body).toMatchObject({
+      salesTaxGroup: 'DOM', purchaseOrderNumber: null, lines: [{ itemNumber: 'A0001', itemSalesTaxGroup: 'VAT15' }],
+    });
+
+    await userEvent.type(screen.getByRole('textbox', { name: /Purchase order number/ }), 'WFQ-PO-9');
+    await userEvent.click(screen.getByRole('button', { name: 'Create purchase order' }));
+    await waitFor(() => expect(posts).toBe(2));
+    expect(calls.filter((c) => c.method === 'POST')[1]!.body).toMatchObject({ purchaseOrderNumber: 'WFQ-PO-9' });
+  }, 20000);
+
   it('requires a vendor, then creates the order', async () => {
     const calls = renderAt('/purchase-orders/new', (c) => {
       if (c.path.startsWith('/lookups/vendors')) return [{ id: 'V1', name: 'Fabrikam', extra: { CurrencyCode: 'EGP' } }];
@@ -103,7 +134,7 @@ describe('purchase orders', () => {
 
     await userEvent.click(screen.getByRole('combobox', { name: /^Vendor/ }));
     await userEvent.click(await screen.findByRole('option', { name: /V1/ }, { timeout: 3000 }));
-    const item = within(screen.getByRole('group', { name: 'Line 1' })).getByRole('combobox', { name: /Item/ });
+    const item = within(screen.getByRole('group', { name: 'Line 1' })).getByRole('combobox', { name: /^Item\b(?! sales)/ });
     await userEvent.click(item);
     await userEvent.click(await screen.findByRole('option', { name: /A0001/ }, { timeout: 3000 }));
     await userEvent.click(screen.getByRole('button', { name: 'Create purchase order' }));

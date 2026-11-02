@@ -68,6 +68,7 @@ export function ProcurementLineEditor({ line: l, index: i, errors: le, onChange,
               unit: item?.extra?.PurchaseUnitSymbol || l.unit,
               needsVariant: isProductMaster(item?.extra),
               onHold: item?.extra?.OnHold === 'Yes',
+              itemSalesTaxGroup: item?.extra?.PurchaseSalesTaxItemGroupCode || l.itemSalesTaxGroup,
             })} />
         ) : (
           <LookupCombobox lookup="procurementCategories" label="Procurement category" required value={l.procurementCategory || null}
@@ -99,12 +100,20 @@ export function ProcurementLineEditor({ line: l, index: i, errors: le, onChange,
           <>
             <LookupCombobox lookup="currencies" label="Currency" value={l.currency || null} onChange={(id) => onChange({ currency: id ?? '' })} />
             <LookupCombobox lookup="vendors" label="Vendor" value={l.vendor || null}
-              onChange={(id, item) => onChange({ vendor: id ?? '', currency: l.currency || item?.extra?.CurrencyCode || '' })} />
+              onChange={(id, item) => onChange({
+                vendor: id ?? '',
+                currency: l.currency || item?.extra?.CurrencyCode || '',
+                salesTaxGroup: l.salesTaxGroup || item?.extra?.SalesTaxGroupCode || item?.extra?.SalesTaxGroup || '',
+              })} />
           </>
         )}
         <LookupCombobox lookup="sites" label="Site" value={l.site || null} onChange={(id) => onChange({ site: id ?? '', warehouse: '' })} />
         <LookupCombobox lookup="warehouses" label="Warehouse" value={l.warehouse || null} filters={{ site: l.site || undefined }}
           onChange={(id) => onChange({ warehouse: id ?? '' })} />
+        <LookupCombobox lookup="taxGroups" label="Sales tax group" value={l.salesTaxGroup || null}
+          placeholder={showVendorAndCurrency ? 'Vendor default' : 'Header default'} onChange={(id) => onChange({ salesTaxGroup: id ?? '' })} />
+        <LookupCombobox lookup="taxItemGroups" label="Item sales tax group" value={l.itemSalesTaxGroup || null}
+          placeholder="Item default" onChange={(id) => onChange({ itemSalesTaxGroup: id ?? '' })} />
       </div>
     </div>
   );

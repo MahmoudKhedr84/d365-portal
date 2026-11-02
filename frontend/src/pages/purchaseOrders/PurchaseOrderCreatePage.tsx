@@ -22,6 +22,7 @@ import { Add20Regular, Send20Regular } from '@fluentui/react-icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { useApi } from '@/api/ApiProvider';
+import { ApiError } from '@/api/client';
 import { createPurchaseOrder, poFormSchema, toPoCreateBody, type PoForm } from '@/api/purchaseOrders';
 import { emptyLine, estimateTotals, prLineFormSchema, type PrLineForm } from '@/api/purchaseRequisitions';
 import { LookupCombobox } from '@/components/LookupCombobox';
@@ -55,7 +56,7 @@ export function PurchaseOrderCreatePage() {
   const tenantId = useSessionStore((st) => st.tenantId);
   const company = useSessionStore((st) => st.company);
 
-  const [form, setForm] = useState<PoForm>({ vendor: '', currency: '', requestedDeliveryDate: '', accountingDate: '', site: '', warehouse: '', vendorReference: '', requester: '' });
+  const [form, setForm] = useState<PoForm>({ vendor: '', currency: '', requestedDeliveryDate: '', accountingDate: '', site: '', warehouse: '', vendorReference: '', requester: '', salesTaxGroup: '', purchaseOrderNumber: '' });
   const [lines, setLines] = useState<PrLineForm[]>([emptyLine()]);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [lineErrors, setLineErrors] = useState<Record<string, string>[]>([]);
@@ -72,7 +73,12 @@ export function PurchaseOrderCreatePage() {
       notify.success(`Purchase order ${po.purchaseOrderNumber} created`, `Company ${po.company}. Confirm or submit it for approval in D365.`);
       navigate(`/purchase-orders/${encodeURIComponent(po.purchaseOrderNumber)}`);
     },
-    onError: (e) => setServerError(errorMessage(e)),
+    onError: (e) => {
+      if (e instanceof ApiError && e.code === 'po_number_required') {
+        setErrors((x) => ({ ...x, purchaseOrderNumber: 'Enter the purchase order number (numbering is manual in this company).' }));
+      }
+      setServerError(errorMessage(e));
+    },
   });
 
   const submit = () => {
@@ -112,7 +118,12 @@ export function PurchaseOrderCreatePage() {
         <Subtitle2 as="h2">Header</Subtitle2>
         <div className={s.grid}>
           <LookupCombobox lookup="vendors" label="Vendor" required value={form.vendor || null} validationMessage={errors.vendor}
-            onChange={(id, v) => setForm((f) => ({ ...f, vendor: id ?? '', currency: f.currency || v?.extra?.CurrencyCode || '' }))} />
+            onChange={(id, v) => setForm((f) => ({
+              ...f,
+              vendor: id ?? '',
+              currency: f.currency || v?.extra?.CurrencyCode || '',
+              salesTaxGroup: f.salesTaxGroup || v?.extra?.SalesTaxGroupCode || v?.extra?.SalesTaxGroup || '',
+            }))} />
           <LookupCombobox lookup="currencies" label="Currency" value={form.currency || null} placeholder="Vendor default"
             onChange={(id) => set('currency', id ?? '')} />
           <Field label="Vendor reference" validationMessage={errors.vendorReference}>
@@ -126,6 +137,11 @@ export function PurchaseOrderCreatePage() {
           </Field>
           <LookupCombobox lookup="workers" label="Requester (optional)" value={form.requester || null}
             onChange={(id) => set('requester', id ?? '')} />
+          <LookupCombobox lookup="taxGroups" label="Sales tax group" value={form.salesTaxGroup || null} placeholder="Vendor default"
+            onChange={(id) => set('salesTaxGroup', id ?? '')} />
+          <Field label="Purchase order number" hint="Leave empty unless numbering is manual" validationMessage={errors.purchaseOrderNumber}>
+            <Input value={form.purchaseOrderNumber} maxLength={20} onChange={(_, d) => set('purchaseOrderNumber', d.value)} />
+          </Field>
           <LookupCombobox lookup="sites" label="Default site" value={form.site || null}
             onChange={(id) => setForm((f) => ({ ...f, site: id ?? '', warehouse: '' }))} />
           <LookupCombobox lookup="warehouses" label="Default warehouse" value={form.warehouse || null}

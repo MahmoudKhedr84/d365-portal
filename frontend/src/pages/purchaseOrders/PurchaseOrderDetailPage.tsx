@@ -91,6 +91,7 @@ export function PurchaseOrderDetailPage() {
           {fact('Site / warehouse', [d.site, d.warehouse].filter(Boolean).join(' / '))}
           {fact('Vendor reference', d.vendorReference)}
           {fact('Requester', d.requester)}
+          {fact('Sales tax group', d.salesTaxGroup)}
         </div>
       </Card>
 
@@ -108,6 +109,7 @@ export function PurchaseOrderDetailPage() {
                 <TableHeaderCell className={s.num}>Unit price</TableHeaderCell>
                 <TableHeaderCell className={s.num}>Amount</TableHeaderCell>
                 <TableHeaderCell>Site / WH</TableHeaderCell>
+                <TableHeaderCell>Tax group / item tax</TableHeaderCell>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -124,6 +126,7 @@ export function PurchaseOrderDetailPage() {
                   <TableCell className={s.num}>{formatAmount(l.unitPrice)}</TableCell>
                   <TableCell className={s.num}>{formatAmount(l.lineAmount)}</TableCell>
                   <TableCell className={s.mono}>{[l.site, l.warehouse].filter(Boolean).join(' / ')}</TableCell>
+                  <TableCell className={s.mono}>{[l.salesTaxGroup, l.itemSalesTaxGroup].filter(Boolean).join(' / ')}</TableCell>
                 </TableRow>
               ))}
             </TableBody>

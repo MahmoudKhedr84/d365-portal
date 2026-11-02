@@ -21,3 +21,7 @@
 ## Manual configuration
 - The integration user needs rights to create purchase orders in each company the portal users work in.
 - If change management (approval workflow) is on, new POs start as **Draft**.
+
+## Fixes after testing in WFQ
+- **PO number.** WFQ's purchase order number sequence is manual, and D365 said "Field 'Purchase order' must be filled in". The PO form now has an optional **Purchase order number** field. When D365 needs a number, the portal says so (`po_number_required`) and highlights that field.
+- **Tax.** PO header **Sales tax group** (`SalesTaxGroupCode`) is defaulted from the vendor and inherited by lines. Each line (PO and requisition) has a **Sales tax group** and an **Item sales tax group** (`SalesTaxItemGroupCode`, defaulted from the item's purchase item tax group). Lookups: `TaxGroups` (TaxGroupCode/Description) and `TaxItemGroups` (TaxItemGroupCode/Description).
