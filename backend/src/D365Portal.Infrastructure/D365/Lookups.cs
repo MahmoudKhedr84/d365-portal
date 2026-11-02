@@ -25,10 +25,10 @@ public static class LookupCatalog
     {
         new("vendors", "Vendors", ["VendorsV3", "VendorsV2", "Vendors"],
             ["VendorAccountNumber"], ["VendorOrganizationName", "VendorName", "Name"], true,
-            ["CurrencyCode", "VendorGroupId"]),
+            ["CurrencyCode", "VendorGroupId", "SalesTaxGroupCode", "SalesTaxGroup"]),
         new("products", "Released products", ["ReleasedProductsV2", "ReleasedProducts"],
             ["ItemNumber"], ["ProductName", "SearchName", "ProductSearchName"], true,
-            ["PurchaseUnitSymbol", "InventoryUnitSymbol", "ProductType", "ProductSubType", "ProductDimensionGroupName"]),
+            ["PurchaseUnitSymbol", "InventoryUnitSymbol", "ProductType", "ProductSubType", "ProductDimensionGroupName", "PurchaseSalesTaxItemGroupCode"]),
         // Variants of a product master (color/size/style/configuration/version), filtered by ?item=.
         new("productVariants", "Product variants", ["ReleasedProductVariantsV2", "ReleasedProductVariants"],
             ["ProductVariantNumber"], ["ProductName", "ProductDescription", "ProductSearchName"], true,
@@ -50,6 +50,8 @@ public static class LookupCatalog
             ["FinancialDimension"], new Dictionary<string, string[]> { ["dimension"] = ["FinancialDimension", "DimensionName"] }),
         new("journalNames", "Journal names", ["JournalNames", "LedgerJournalNames"],
             ["Name", "JournalName"], ["Description", "JournalNameDescription"], true, ["Type", "JournalType", "NewVoucher", "Currency"]),
+        new("taxGroups", "Sales tax groups", ["TaxGroups"], ["TaxGroupCode"], ["Description"], true),
+        new("taxItemGroups", "Item sales tax groups", ["TaxItemGroups", "TaxItemGroupHeadings"], ["TaxItemGroupCode", "TaxItemGroup"], ["Description", "Name"], true),
         new("bankAccounts", "Bank accounts", ["BankAccounts"], ["BankAccountId"], ["Name"], true, ["CurrencyCode"]),
         new("currencies", "Currencies", ["Currencies"], ["CurrencyCode"], ["Name", "CurrencyName", "Description"], false),
         new("workers", "Workers", ["Workers"], ["PersonnelNumber"], ["Name", "KnownAs"], false),

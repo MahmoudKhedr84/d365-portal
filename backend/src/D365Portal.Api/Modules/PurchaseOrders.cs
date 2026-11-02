@@ -37,7 +37,9 @@ public sealed record PoLineDto(
     string? Site,
     string? Warehouse,
     DateOnly? RequestedDeliveryDate,
-    string? Status);
+    string? Status,
+    string? SalesTaxGroup = null,
+    string? ItemSalesTaxGroup = null);
 
 public sealed record PoDetailDto(
     string PurchaseOrderNumber,
@@ -53,6 +55,7 @@ public sealed record PoDetailDto(
     string? Warehouse,
     string? VendorReference,
     string? Requester,
+    string? SalesTaxGroup,
     IReadOnlyList<PoLineDto> Lines,
     decimal Total,
     string D365Url);
@@ -71,7 +74,9 @@ public sealed record CreatePoLineRequest(
     string? Size = null,
     string? Color = null,
     string? Style = null,
-    string? Version = null);
+    string? Version = null,
+    string? SalesTaxGroup = null,
+    string? ItemSalesTaxGroup = null);
 
 public sealed record CreatePoRequest(
     string Vendor,
@@ -82,7 +87,11 @@ public sealed record CreatePoRequest(
     string? Warehouse,
     string? VendorReference,
     string? Requester,
-    IReadOnlyList<CreatePoLineRequest> Lines);
+    IReadOnlyList<CreatePoLineRequest> Lines,
+    /// <summary>Only needed when the company's purchase order number sequence is manual.</summary>
+    string? PurchaseOrderNumber = null,
+    /// <summary>Default sales tax group for all lines.</summary>
+    string? SalesTaxGroup = null);
 
 public sealed class CreatePoRequestValidator : AbstractValidator<CreatePoRequest>
 {
@@ -92,6 +101,8 @@ public sealed class CreatePoRequestValidator : AbstractValidator<CreatePoRequest
         RuleFor(x => x.Currency).Length(3).When(x => !string.IsNullOrWhiteSpace(x.Currency));
         RuleFor(x => x.VendorReference).MaximumLength(60);
         RuleFor(x => x.Requester).MaximumLength(25);
+        RuleFor(x => x.PurchaseOrderNumber).MaximumLength(20);
+        RuleFor(x => x.SalesTaxGroup).MaximumLength(10);
         RuleFor(x => x.Lines).NotEmpty().WithMessage("Add at least one line.")
             .Must(l => l is null || l.Count <= 200).WithMessage("At most 200 lines.");
         RuleForEach(x => x.Lines).ChildRules(line =>
@@ -102,6 +113,8 @@ public sealed class CreatePoRequestValidator : AbstractValidator<CreatePoRequest
                 .WithMessage("Category lines need a description.");
             line.RuleFor(l => l.Quantity).GreaterThan(0).WithMessage("Quantity must be greater than 0.");
             line.RuleFor(l => l.UnitPrice).GreaterThanOrEqualTo(0).When(l => l.UnitPrice is not null);
+            line.RuleFor(l => l.SalesTaxGroup).MaximumLength(10);
+            line.RuleFor(l => l.ItemSalesTaxGroup).MaximumLength(10);
         });
     }
 }
@@ -131,14 +144,14 @@ public sealed class PurchaseOrderService(
     {
         "dataAreaId", "PurchaseOrderNumber", "OrderVendorAccountNumber", "PurchaseOrderName", "PurchaseOrderStatus",
         "DocumentApprovalStatus", "CurrencyCode", "RequestedDeliveryDate", "VendorOrderReference",
-        "AccountingDate", "DefaultReceivingSiteId", "DefaultReceivingWarehouseId", "RequesterPersonnelNumber",
+        "AccountingDate", "DefaultReceivingSiteId", "DefaultReceivingWarehouseId", "RequesterPersonnelNumber", "SalesTaxGroupCode",
     };
 
     private static readonly string[] LineFields = new[]
     {
         "PurchaseOrderNumber", "LineNumber", "ItemNumber", "ProcurementProductCategoryName", "LineDescription",
         "OrderedPurchaseQuantity", "PurchaseUnitSymbol", "PurchasePrice", "LineAmount", "ReceivingSiteId",
-        "ReceivingWarehouseId", "RequestedDeliveryDate", "PurchaseOrderLineStatus",
+        "ReceivingWarehouseId", "RequestedDeliveryDate", "PurchaseOrderLineStatus", "SalesTaxGroupCode", "SalesTaxItemGroupCode",
     }.Concat(ProductDimensionFields).ToArray();
 
     public async Task<PoListDto> ListAsync(string? search, string? status, string? approval, int top, int skip, CancellationToken ct)
@@ -192,7 +205,9 @@ public sealed class PurchaseOrderService(
         var header = Compact(new Dictionary<string, object?>
         {
             ["dataAreaId"] = dataArea,
+            ["PurchaseOrderNumber"] = Blank(req.PurchaseOrderNumber),
             ["OrderVendorAccountNumber"] = req.Vendor.Trim(),
+            ["SalesTaxGroupCode"] = Blank(req.SalesTaxGroup),
             ["CurrencyCode"] = Blank(req.Currency)?.ToUpperInvariant(),
             ["RequestedDeliveryDate"] = ToODataDate(req.RequestedDeliveryDate),
             ["AccountingDate"] = ToODataDate(req.AccountingDate),
@@ -201,8 +216,19 @@ public sealed class PurchaseOrderService(
             ["VendorOrderReference"] = Blank(req.VendorReference),
             ["RequesterPersonnelNumber"] = Blank(req.Requester),
         });
-        var created = await odata.PostAsync(s, HeaderSet, header, ct);
-        var number = Str(created, "PurchaseOrderNumber");
+        JsonElement created;
+        try
+        {
+            created = await odata.PostAsync(s, HeaderSet, header, ct);
+        }
+        catch (D365Exception ex) when (string.IsNullOrWhiteSpace(req.PurchaseOrderNumber) &&
+                                       ex.Message.Contains("'Purchase order' must be filled in", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new AdminException(422, "po_number_required",
+                $"D365 did not assign a purchase order number in {company}: its purchase order number sequence is manual. " +
+                "Enter a purchase order number, or set Procurement and sourcing parameters > Number sequences > Purchase order to a non-manual sequence.");
+        }
+        var number = Str(created, "PurchaseOrderNumber") ?? Blank(req.PurchaseOrderNumber);
         if (string.IsNullOrEmpty(number))
             throw new D365Exception("D365 did not return the new purchase order number.", null, "d365_bad_response");
 
@@ -262,6 +288,8 @@ public sealed class PurchaseOrderService(
             ["ProductColorId"] = isItem ? Blank(l.Color) : null,
             ["ProductStyleId"] = isItem ? Blank(l.Style) : null,
             ["ProductVersionId"] = isItem ? Blank(l.Version) : null,
+            ["SalesTaxGroupCode"] = Blank(l.SalesTaxGroup) ?? Blank(req.SalesTaxGroup),
+            ["SalesTaxItemGroupCode"] = Blank(l.ItemSalesTaxGroup),
         });
     }
 
@@ -280,14 +308,14 @@ public sealed class PurchaseOrderService(
             (long)Num(r, "LineNumber"), Str(r, "ItemNumber"), Str(r, "ProcurementProductCategoryName"), JoinVariant(r),
             Str(r, "LineDescription"), Num(r, "OrderedPurchaseQuantity"), Str(r, "PurchaseUnitSymbol"), Num(r, "PurchasePrice"),
             Num(r, "LineAmount"), Str(r, "ReceivingSiteId"), Str(r, "ReceivingWarehouseId"), Date(r, "RequestedDeliveryDate"),
-            Str(r, "PurchaseOrderLineStatus"))).ToList();
+            Str(r, "PurchaseOrderLineStatus"), Str(r, "SalesTaxGroupCode"), Str(r, "SalesTaxItemGroupCode"))).ToList();
 
         return new PoDetailDto(
             Str(h, "PurchaseOrderNumber") ?? number, company, Str(h, "OrderVendorAccountNumber"), Str(h, "PurchaseOrderName"),
             Str(h, "PurchaseOrderStatus"), Str(h, "DocumentApprovalStatus"), Str(h, "CurrencyCode"),
             Date(h, "RequestedDeliveryDate"), Date(h, "AccountingDate"), Str(h, "DefaultReceivingSiteId"),
             Str(h, "DefaultReceivingWarehouseId"), Str(h, "VendorOrderReference"), Str(h, "RequesterPersonnelNumber"),
-            lineDtos, lineDtos.Sum(l => l.LineAmount), DeepLink(s, company, "PurchTableListPage"));
+            Str(h, "SalesTaxGroupCode"), lineDtos, lineDtos.Sum(l => l.LineAmount), DeepLink(s, company, "PurchTableListPage"));
     }
 
     private async Task<(D365ConnectionSettings Settings, string Company)> Context(CancellationToken ct)

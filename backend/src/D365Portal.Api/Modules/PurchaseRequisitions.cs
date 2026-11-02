@@ -39,7 +39,9 @@ public sealed record PrLineDto(
     string? Warehouse,
     DateOnly? RequestedDate,
     string? Status,
-    string? Variant = null);
+    string? Variant = null,
+    string? SalesTaxGroup = null,
+    string? ItemSalesTaxGroup = null);
 
 public sealed record PrTotalDto(string Currency, decimal Amount);
 
@@ -72,7 +74,9 @@ public sealed record CreatePrLineRequest(
     string? Size = null,
     string? Color = null,
     string? Style = null,
-    string? Version = null);
+    string? Version = null,
+    string? SalesTaxGroup = null,
+    string? ItemSalesTaxGroup = null);
 
 /// <summary>
 /// The preparer is always the D365 worker linked to the integration user (D365 requires the
@@ -144,6 +148,7 @@ public sealed class PurchaseRequisitionService(
         "ProductName", "LineDescription", "RequestedPurchaseQuantity", "PurchaseUnitSymbol", "PurchasePrice", "LineAmount",
         "CurrencyCode", "VendorAccountNumber", "ReceivingSiteId", "ReceivingWarehouseId", "RequestedDate", "LineStatus",
         "ProductConfigurationId", "ProductSizeId", "ProductColorId", "ProductStyleId", "ProductVersionId",
+        "SalesTaxGroupCode", "SalesTaxItemGroupCode",
     };
 
     public async Task<PrListDto> ListAsync(string? search, string? status, int top, int skip, CancellationToken ct)
@@ -265,6 +270,8 @@ public sealed class PurchaseRequisitionService(
             ["ProductColorId"] = isItem ? Blank(l.Color) : null,
             ["ProductStyleId"] = isItem ? Blank(l.Style) : null,
             ["ProductVersionId"] = isItem ? Blank(l.Version) : null,
+            ["SalesTaxGroupCode"] = Blank(l.SalesTaxGroup),
+            ["SalesTaxItemGroupCode"] = Blank(l.ItemSalesTaxGroup),
         });
     }
 
@@ -285,7 +292,7 @@ public sealed class PurchaseRequisitionService(
             Num(r, "RequestedPurchaseQuantity"), Str(r, "PurchaseUnitSymbol"), Num(r, "PurchasePrice"), Num(r, "LineAmount"),
             Str(r, "CurrencyCode"), Str(r, "VendorAccountNumber"), Str(r, "ReceivingSiteId"), Str(r, "ReceivingWarehouseId"),
             Date(r, "RequestedDate"), Str(r, "LineStatus"),
-            JoinVariant(r))).ToList();
+            JoinVariant(r), Str(r, "SalesTaxGroupCode"), Str(r, "SalesTaxItemGroupCode"))).ToList();
         var totals = lineDtos.GroupBy(l => l.Currency ?? string.Empty)
             .Select(g => new PrTotalDto(g.Key, g.Sum(l => l.LineAmount))).ToList();
 

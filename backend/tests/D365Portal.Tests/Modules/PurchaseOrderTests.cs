@@ -69,6 +69,51 @@ public class PurchaseOrderTests
     }
 
     [Fact]
+    public async Task Tax_groups_default_from_the_header_and_can_be_overridden_per_line()
+    {
+        var (svc, odata, _) = Create();
+        await svc.CreateAsync(Request(
+            new CreatePoLineRequest("A", null, null, 1, null, 10, null, null, null, ItemSalesTaxGroup: "VAT15"),
+            new CreatePoLineRequest("B", null, null, 1, null, 10, null, null, null, SalesTaxGroup: "EXEMPT")) with { SalesTaxGroup = "DOM" }, default);
+        ((Dictionary<string, object?>)odata.Posts.Single().Body)["SalesTaxGroupCode"].Should().Be("DOM");
+        var ops = odata.Batches.Single();
+        var l1 = (Dictionary<string, object?>)ops[0].Body!;
+        l1["SalesTaxGroupCode"].Should().Be("DOM");
+        l1["SalesTaxItemGroupCode"].Should().Be("VAT15");
+        ((Dictionary<string, object?>)ops[1].Body!)["SalesTaxGroupCode"].Should().Be("EXEMPT");
+    }
+
+    [Fact]
+    public async Task Manual_po_number_sequence_asks_for_a_number_and_a_given_number_is_sent()
+    {
+        var (svc, odata, _) = Create();
+        var manual = new RecordingOData();
+        var tenant = new TenantContext();
+        tenant.SetTenant(Guid.NewGuid(), Guid.NewGuid(), "u@contoso.com", UserRole.User);
+        tenant.SetCompany("WFQ");
+        var failing = new PurchaseOrderService(new StaticSettings(), new ThrowingPost(), tenant, new ListAudit(),
+            new LookupService(manual, new MemoryCache(new MemoryCacheOptions())));
+        var line = new CreatePoLineRequest("A", null, null, 1, null, null, null, null, null);
+        (await failing.Invoking(f => f.CreateAsync(Request(line), default)).Should().ThrowAsync<AdminException>())
+            .Which.Code.Should().Be("po_number_required");
+
+        await svc.CreateAsync(Request(line) with { PurchaseOrderNumber = "WFQ-PO-1" }, default);
+        ((Dictionary<string, object?>)odata.Posts.Single().Body)["PurchaseOrderNumber"].Should().Be("WFQ-PO-1");
+    }
+
+    private sealed class ThrowingPost : ID365ODataClient
+    {
+        private readonly RecordingOData _inner = new();
+        public Task<ODataPage> GetAsync(D365ConnectionSettings s, string e, ODataQuery q, CancellationToken ct) => _inner.GetAsync(s, e, q, ct);
+        public Task<System.Text.Json.JsonElement> PostAsync(D365ConnectionSettings s, string e, object b, CancellationToken ct) =>
+            throw new D365Exception("D365 returned HTTP 400. (Write failed for table row of type 'PurchPurchaseOrderHeaderV2Entity'. Infolog: Warning: Field 'Purchase order' must be filled in.)", 400, D365ErrorCodes.Validation);
+        public Task PatchAsync(D365ConnectionSettings s, string e, IReadOnlyDictionary<string, object?> k, object b, CancellationToken ct) => Task.CompletedTask;
+        public Task DeleteAsync(D365ConnectionSettings s, string e, IReadOnlyDictionary<string, object?> k, CancellationToken ct) => Task.CompletedTask;
+        public Task<IReadOnlyList<BatchResult>> BatchAsync(D365ConnectionSettings s, IReadOnlyList<BatchOperation> o, CancellationToken ct) => _inner.BatchAsync(s, o, ct);
+        public Task<IReadOnlyList<string>> GetEntitySetNamesAsync(D365ConnectionSettings s, CancellationToken ct) => _inner.GetEntitySetNamesAsync(s, ct);
+    }
+
+    [Fact]
     public async Task Failed_lines_delete_the_empty_order()
     {
         var (svc, odata, _) = Create();
