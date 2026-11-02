@@ -81,6 +81,7 @@ builder.Services.AddRateLimiter(o =>
 // ---------- Application services ----------
 builder.Services.AddScoped<AdminService>();
 builder.Services.AddScoped<D365Portal.Api.Modules.PurchaseRequisitionService>();
+builder.Services.AddScoped<D365Portal.Api.Modules.PurchaseOrderService>();
 builder.Services.AddValidatorsFromAssemblyContaining<Program>(includeInternalTypes: false);
 builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 
@@ -198,6 +199,7 @@ app.MapSessionEndpoints();
 app.MapAdminEndpoints();
 app.MapLookupEndpoints();
 app.MapPurchaseRequisitionEndpoints();
+app.MapPurchaseOrderEndpoints();
 
 app.Run();
 
