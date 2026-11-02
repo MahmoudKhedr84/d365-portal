@@ -85,6 +85,7 @@ builder.Services.AddScoped<D365Portal.Api.Modules.PurchaseOrderService>();
 builder.Services.AddScoped<D365Portal.Api.Modules.CapaCaseService>();
 builder.Services.AddScoped<D365Portal.Api.Modules.GeneralJournalService>();
 builder.Services.AddScoped<AuditService>();
+builder.Services.AddScoped<D365Portal.Api.Modules.DashboardService>();
 builder.Services.AddValidatorsFromAssemblyContaining<Program>(includeInternalTypes: false);
 builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 

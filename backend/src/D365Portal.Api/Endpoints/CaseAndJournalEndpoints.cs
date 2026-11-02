@@ -36,6 +36,11 @@ public static class CaseAndJournalEndpoints
             .AddEndpointFilter<ValidationFilter<CreateJournalRequest>>()
             .WithSummary("Create a general journal (header, then all lines in one changeset). Posting is done in D365.");
 
+        app.MapGet("/api/dashboard", (DashboardService s, CancellationToken ct) => s.GetAsync(ct))
+            .WithTags("Dashboard")
+            .RequireAuthorization(Policies.TenantUser)
+            .WithSummary("Home dashboard: live D365 counts for the current company and portal activity.");
+
         return app;
     }
 }
