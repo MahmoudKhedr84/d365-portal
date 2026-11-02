@@ -15,7 +15,7 @@ public class CaseAndJournalTests : IClassFixture<ApiFactory>
     private readonly ApiFactory _f;
     public CaseAndJournalTests(ApiFactory f) => _f = f;
 
-    private static TenantContext Tenant()
+    private static TenantContext Ctx()
     {
         var t = new TenantContext();
         t.SetTenant(Guid.NewGuid(), Guid.NewGuid(), "u@contoso.com", UserRole.User);
@@ -34,7 +34,7 @@ public class CaseAndJournalTests : IClassFixture<ApiFactory>
             Rows = (_, _) => """[{"CaseId":"CAPA-0042","Description":"Leaking valve","CaseStatus":"Planned","CAPACaseClassification":"Corrective","CAPADueDate":"2026-11-30T12:00:00Z"}]""",
         };
         var audit = new ListAudit();
-        var svc = new CapaCaseService(new StaticSettings(), odata, Tenant(), audit);
+        var svc = new CapaCaseService(new StaticSettings(), odata, Ctx(), audit);
 
         var c = await svc.CreateAsync(new CreateCaseRequest("Leaking valve", "Corrective", "QA", null, null, null,
             new DateOnly(2026, 11, 30), null, "015115", null), default);
@@ -54,7 +54,7 @@ public class CaseAndJournalTests : IClassFixture<ApiFactory>
     public async Task Case_list_filters_by_status()
     {
         var odata = new RecordingOData();
-        await new CapaCaseService(new StaticSettings(), odata, Tenant(), new ListAudit()).ListAsync("valve", "inprocess", 25, 0, default);
+        await new CapaCaseService(new StaticSettings(), odata, Ctx(), new ListAudit()).ListAsync("valve", "inprocess", 25, 0, default);
         odata.Gets.Single().Query.Filter.Should().Contain("dataAreaId eq 'wfq'")
             .And.Contain("CaseStatus eq Microsoft.Dynamics.DataEntities.CaseStatus'InProcess'")
             .And.Contain("Description eq '*valve*'");
@@ -83,7 +83,7 @@ public class CaseAndJournalTests : IClassFixture<ApiFactory>
                 ? """[{"JournalBatchNumber":"GJ-0099","JournalName":"GenJrn","IsPosted":"No"}]"""
                 : """[{"LineNumber":1,"AccountType":"Ledger","AccountDisplayValue":"110110","DebitAmount":100,"CreditAmount":0,"CurrencyCode":"EGP"},{"LineNumber":2,"AccountType":"Ledger","AccountDisplayValue":"220000","DebitAmount":0,"CreditAmount":60,"CurrencyCode":"EGP"}]""",
         };
-        var svc = new GeneralJournalService(new StaticSettings(), odata, Tenant(), new ListAudit());
+        var svc = new GeneralJournalService(new StaticSettings(), odata, Ctx(), new ListAudit());
         var j = await svc.CreateAsync(new CreateJournalRequest("GenJrn", "Nov accruals",
             new[] { Line(100, null), Line(null, 60, "220000", offset: "BNK-01") }), default);
 
@@ -114,7 +114,7 @@ public class CaseAndJournalTests : IClassFixture<ApiFactory>
             Created = _ => """{"JournalBatchNumber":"GJ-0100"}""",
             FailBatch = new D365Exception("Account 999 does not exist.", 400, D365ErrorCodes.Validation),
         };
-        var svc = new GeneralJournalService(new StaticSettings(), odata, Tenant(), new ListAudit());
+        var svc = new GeneralJournalService(new StaticSettings(), odata, Ctx(), new ListAudit());
         var act = () => svc.CreateAsync(new CreateJournalRequest("GenJrn", null, new[] { Line(1, null, "999") }), default);
         (await act.Should().ThrowAsync<D365Exception>()).Which.Message.Should().Contain("not created").And.Contain("999");
         odata.Deletes.Single().Key["JournalBatchNumber"].Should().Be("GJ-0100");
@@ -135,7 +135,7 @@ public class CaseAndJournalTests : IClassFixture<ApiFactory>
     public async Task Journal_list_filters_posted()
     {
         var odata = new RecordingOData();
-        await new GeneralJournalService(new StaticSettings(), odata, Tenant(), new ListAudit()).ListAsync(null, false, 25, 0, default);
+        await new GeneralJournalService(new StaticSettings(), odata, Ctx(), new ListAudit()).ListAsync(null, false, 25, 0, default);
         odata.Gets.Single().Query.Filter.Should().Contain("IsPosted eq Microsoft.Dynamics.DataEntities.NoYes'No'");
     }
 
