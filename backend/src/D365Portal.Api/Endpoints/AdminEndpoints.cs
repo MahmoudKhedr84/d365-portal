@@ -60,6 +60,10 @@ public static class AdminEndpoints
                 s.FindEntitySetsAsync(tenantId, search, ct))
             .WithSummary("Search the environment's OData entity set names.");
 
+        platform.MapGet("/tenants/{tenantId:guid}/audit", (Guid tenantId, [Microsoft.AspNetCore.Http.AsParameters] AuditQuery q,
+                AuditService s, CancellationToken ct) => s.QueryAsync(q, platform: true, tenantId, ct))
+            .WithSummary("Audit log of a tenant.");
+
         platform.MapGet("/tenants/{tenantId:guid}/connection", async (Guid tenantId, AdminService s, CancellationToken ct) =>
             await s.GetConnectionAsync(tenantId, ct) is { } c ? Results.Ok(c) : Results.NoContent());
 
@@ -118,6 +122,10 @@ public static class AdminEndpoints
         admin.MapGet("/d365/entity-sets", (string? search, ITenantContext t, AdminService s, CancellationToken ct) =>
                 s.FindEntitySetsAsync(Tenant(t), search, ct))
             .WithSummary("Search the environment's OData entity set names.");
+
+        admin.MapGet("/audit", ([Microsoft.AspNetCore.Http.AsParameters] AuditQuery q, AuditService s, CancellationToken ct) =>
+                s.QueryAsync(q, platform: false, tenantId: null, ct))
+            .WithSummary("Audit log of this tenant: sign-ins, admin changes and every D365 call.");
 
         admin.MapGet("/users", (ITenantContext t, AdminService s, CancellationToken ct) => s.ListUsersAsync(Tenant(t), ct));
 

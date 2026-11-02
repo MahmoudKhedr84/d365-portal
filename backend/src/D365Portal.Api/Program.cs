@@ -82,6 +82,9 @@ builder.Services.AddRateLimiter(o =>
 builder.Services.AddScoped<AdminService>();
 builder.Services.AddScoped<D365Portal.Api.Modules.PurchaseRequisitionService>();
 builder.Services.AddScoped<D365Portal.Api.Modules.PurchaseOrderService>();
+builder.Services.AddScoped<D365Portal.Api.Modules.CapaCaseService>();
+builder.Services.AddScoped<D365Portal.Api.Modules.GeneralJournalService>();
+builder.Services.AddScoped<AuditService>();
 builder.Services.AddValidatorsFromAssemblyContaining<Program>(includeInternalTypes: false);
 builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 
@@ -200,6 +203,7 @@ app.MapAdminEndpoints();
 app.MapLookupEndpoints();
 app.MapPurchaseRequisitionEndpoints();
 app.MapPurchaseOrderEndpoints();
+app.MapCaseAndJournalEndpoints();
 
 app.Run();
 
