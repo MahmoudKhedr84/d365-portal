@@ -9,12 +9,9 @@ namespace D365Portal.Infrastructure.Migrations.Postgres
     {
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AddColumn<bool>(
-                name: "UseExtendedProductDimensions",
-                table: "d365_connections",
-                type: "boolean",
-                nullable: false,
-                defaultValue: false);
+            // Idempotent: the column may already exist (it was added ahead of this deploy).
+            migrationBuilder.Sql(
+                "ALTER TABLE d365_connections ADD COLUMN IF NOT EXISTS \"UseExtendedProductDimensions\" boolean NOT NULL DEFAULT FALSE;");
         }
 
         protected override void Down(MigrationBuilder migrationBuilder)
