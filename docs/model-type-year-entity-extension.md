@@ -13,17 +13,26 @@ Per-product-master assignment: `CTKEcoResProductMasterModel/Type/Year` (no publi
 Standard entities do **not** expose `InventDimension1-12`, so OData can't write them and D365 fails with
 "Inventory dimension Model is a product dimension and must consequently be specified".
 
-## What to add (X++ entity extensions)
-Add three fields to each entity below, mapped to the entity's **InventDim** data source, with the public field
-names exactly `InventDimension1`, `InventDimension2`, `InventDimension3` (the portal uses these names):
+## What to add (X++)
+**1. Line entities — extensions.** Add three fields mapped to the entity's **InventDim** data source, public names
+exactly `InventDimension1`, `InventDimension2`, `InventDimension3`:
+- `PurchaseRequisitionLineEntity` (`PurchaseRequisitionLines`)
+- `PurchPurchaseOrderLineV2Entity` (`PurchaseOrderLinesV2`)
 
-1. `PurchaseRequisitionLineEntity` (`PurchaseRequisitionLines`)
-2. `PurchPurchaseOrderLineV2Entity` (`PurchaseOrderLinesV2`)
-3. `EcoResReleasedProductVariantV2Entity` (`ReleasedProductVariantsV2`) — the portal reads each item's valid
-   Model / Type / Year combinations from here
+Add the same fields to each staging table extension.
 
-For each: add the same fields to the entity's staging table extension, build, sync the database, then
-*Data management → Framework parameters → Entity settings → Refresh entity list*.
+**2. Assigned values per product master — three new read-only public entities** (the standard
+`ProductMasterStyles` pattern; the released-variant entity is not based on InventDim, so it is not used):
+
+| Public collection | Root data source | Joins | Fields |
+|---|---|---|---|
+| `CTKProductMasterModels` | `CTKEcoResProductMasterModel` | `EcoResProduct` on `ModelProductMaster = RecId`; `CTKEcoResModel` on `Model = RecId` | `ProductMasterNumber` = EcoResProduct.DisplayProductNumber, `Name` = CTKEcoResModel.Name |
+| `CTKProductMasterTypes` | `CTKEcoResProductMasterType` | `EcoResProduct` on `TypeProductMaster`; `CTKEcoResType` on `Type` | `ProductMasterNumber`, `Name` |
+| `CTKProductMasterYears` | `CTKEcoResProductMasterYear` | `EcoResProduct` on `YearProductMaster`; `CTKEcoResYear` on `Year` | `ProductMasterNumber`, `Name` |
+
+Key: `ProductMasterNumber` + `Name`. `IsPublic = Yes`, OData read is enough.
+
+Then build, sync the database, *Data management → Framework parameters → Entity settings → Refresh entity list*.
 
 ## Portal behaviour
 **Tenant option, off by default:** *Admin → tenant → D365 connection → "Extended product dimensions (Model / Type / Year)"*
@@ -32,6 +41,6 @@ For each: add the same fields to the entity's staging table extension, build, sy
 
 - With the option on, on first use the portal also probes each entity with `$select=InventDimension1,InventDimension2,InventDimension3`
   (cached 1 hour per environment). If the probe fails (fields not deployed yet), the dimensions are not offered.
-- After deployment: for a product master, every dimension that has values in the item's released variants is
-  shown as a required dropdown with those values; the line is sent with `InventDimension1-3`; Draft edits read
+- After deployment: for a product master, each of Model / Type / Year that has values assigned in the
+  `CTKProductMaster*` entities is shown as a required dropdown with those values; the line is sent with `InventDimension1-3`; Draft edits read
   them back. The server validates the same rule (`422 product_dimension_required`).

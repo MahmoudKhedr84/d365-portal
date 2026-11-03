@@ -218,14 +218,16 @@ public class DimensionAndEditTests
     }
 
     [Fact]
-    public async Task Model_type_year_come_from_the_item_variants_and_are_sent_as_InventDimension1_to_3()
+    public async Task Model_type_year_come_from_the_product_master_and_are_sent_as_InventDimension1_to_3()
     {
         var env = new Env { Extended = true };
         var baseRows = env.OData.Rows;
         env.OData.Rows = (set, q) => set switch
         {
             "ReleasedProductsV2" => """[{"ItemNumber":"A1","StorageDimensionGroupName":"SiteWH","ProductType":"Item","ProductSubType":"ProductMaster","ProductNumber":"A1"}]""",
-            "ReleasedProductVariantsV2" => """[{"ItemNumber":"A1","InventDimension1":"Corolla","InventDimension2":"Sedan","InventDimension3":"2024"},{"ItemNumber":"A1","InventDimension1":"Camry","InventDimension2":"Sedan","InventDimension3":"2025"}]""",
+            "CTKProductMasterModels" => """[{"ProductMasterNumber":"A1","Name":"Corolla"},{"ProductMasterNumber":"A1","Name":"Camry"}]""",
+            "CTKProductMasterTypes" => """[{"ProductMasterNumber":"A1","Name":"Sedan"}]""",
+            "CTKProductMasterYears" => """[{"ProductMasterNumber":"A1","Name":"2024"},{"ProductMasterNumber":"A1","Name":"2025"}]""",
             _ => baseRows(set, q),
         };
         env.OData.Created = _ => """{"RequisitionNumber":"PR-1"}""";
@@ -248,7 +250,7 @@ public class DimensionAndEditTests
         env.OData.Rows = (set, q) => set switch
         {
             "ReleasedProductsV2" => """[{"ItemNumber":"A1","StorageDimensionGroupName":"SiteWH","ProductType":"Item","ProductSubType":"ProductMaster","ProductNumber":"A1"}]""",
-            "ReleasedProductVariantsV2" => """[{"ItemNumber":"A1","InventDimension1":"Corolla"}]""",
+            "CTKProductMasterModels" => """[{"ProductMasterNumber":"A1","Name":"Corolla"}]""",
             _ => baseRows(set, q),
         };
         env.OData.Created = _ => """{"RequisitionNumber":"PR-1"}""";

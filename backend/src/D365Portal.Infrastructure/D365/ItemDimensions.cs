@@ -217,6 +217,18 @@ public sealed class ItemDimensionResolver(ID365ODataClient odata, IMemoryCache c
         (ProductDimension.Version, "ProductMasterVersions", "ProductVersionId"),
     ];
 
+    /// <summary>
+    /// Values assigned to a product master for Model / Type / Year (tables CTKEcoResProductMasterModel/Type/Year). Custom
+    /// public entities (see docs/model-type-year-entity-extension.md): ProductMasterNumber + Name. Read only when the
+    /// tenant option "Extended product dimensions" is on.
+    /// </summary>
+    public static readonly (ProductDimension Dim, string Set, string Field)[] ExtendedProductMasterSets =
+    [
+        (ProductDimension.Model, "CTKProductMasterModels", "Name"),
+        (ProductDimension.Type, "CTKProductMasterTypes", "Name"),
+        (ProductDimension.Year, "CTKProductMasterYears", "Name"),
+    ];
+
     /// <summary>Generic product dimensions (InventDimension1-3) and the entity field that carries each one.</summary>
     public static readonly (ProductDimension Dim, string Field)[] ExtraDimensionFields =
     [
@@ -249,15 +261,15 @@ public sealed class ItemDimensionResolver(ID365ODataClient odata, IMemoryCache c
     }
 
     /// <summary>
-    /// A product dimension is used by the item when its product master has at least one value assigned. Model / Type / Year
-    /// come from the item's released variants (when that entity exposes InventDimension1-3).
+    /// A product dimension is used by the item when its product master has at least one value assigned (the same rule D365
+    /// validates). Model / Type / Year are included only when the tenant option is on.
     /// </summary>
     private async Task<IReadOnlyList<ProductDimensionOption>> ReadProductDimensionsAsync(
         D365ConnectionSettings s, string company, string item, string productNumber, CancellationToken ct)
     {
         var result = new List<ProductDimensionOption>();
-        await AddExtraDimensionsAsync(s, company, item, result, ct);
-        foreach (var (dim, set, field) in ProductMasterSets)
+        var sets = s.ExtendedProductDimensions ? ProductMasterSets.Concat(ExtendedProductMasterSets) : ProductMasterSets;
+        foreach (var (dim, set, field) in sets)
         {
             try
             {
@@ -274,26 +286,6 @@ public sealed class ItemDimensionResolver(ID365ODataClient odata, IMemoryCache c
             catch (D365Exception ex) when (ex.StatusCode is 404 or 400) { /* entity not exposed: dimension not offered */ }
         }
         return result.OrderBy(o => (int)o.Dimension).ToList();
-    }
-
-    public const string VariantSet = "ReleasedProductVariantsV2";
-
-    private async Task AddExtraDimensionsAsync(D365ConnectionSettings s, string company, string item, List<ProductDimensionOption> result, CancellationToken ct)
-    {
-        if (!await ExtraDimensionsSupportedAsync(s, VariantSet, ct)) return;
-        var page = await odata.GetAsync(s, VariantSet, new ODataQuery
-        {
-            CrossCompany = true,
-            Filter = ODataFilter.And(ODataFilter.Company(company), $"ItemNumber eq {ODataFilter.Literal(item)}"),
-            Select = ["ItemNumber", .. ExtraDimensionFields.Select(x => x.Field)],
-            Top = 1000,
-        }, ct);
-        foreach (var (dim, field) in ExtraDimensionFields)
-        {
-            var values = page.Rows.Select(r => Read(r, field)).Where(v => !string.IsNullOrWhiteSpace(v)).Select(v => v!)
-                .Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(v => v, StringComparer.OrdinalIgnoreCase).ToList();
-            if (values.Count > 0) result.Add(new ProductDimensionOption(dim, values));
-        }
     }
 
     private async Task<(string? Group, string? ProductType, string? ProductNumber, bool IsMaster)> ReadItemAsync(
