@@ -164,7 +164,8 @@ export function toCreateBody(form: PrForm, lines: PrLineForm[]) {
     justification: blank(form.justification),
     lines: lines.map((l) => ({
       itemNumber: l.kind === 'item' ? blank(l.itemNumber) : null,
-      procurementCategory: blank(l.procurementCategory),
+      // D365 fills a category on item lines; send it only for category lines (item XOR category).
+      procurementCategory: l.kind === 'category' ? blank(l.procurementCategory) : null,
       description: blank(l.description),
       quantity: Number(l.quantity),
       unit: blank(l.unit),
@@ -214,7 +215,7 @@ export function lineFromDetail(
     kind: item ? 'item' : 'category',
     lineNumber: l.lineNumber,
     itemNumber: v(l.itemNumber),
-    procurementCategory: v(l.procurementCategory),
+    procurementCategory: item ? '' : v(l.procurementCategory),
     description: v(l.description ?? l.productName),
     quantity: l.quantity,
     unit: v(l.unit),

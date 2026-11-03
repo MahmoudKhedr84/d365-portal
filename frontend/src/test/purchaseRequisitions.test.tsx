@@ -157,12 +157,14 @@ describe('editing a draft requisition with item storage dimensions', () => {
   });
 
   it('shows only mandatory dimensions, clears the others and saves with PUT', async () => {
+    // D365 fills a procurement category on item lines; the edit must not send it back with the item.
+    const saved: PrDetail = { ...draft, lines: draft.lines.map((l) => ({ ...l, procurementCategory: 'Office' })) };
     const calls = renderAt('/purchase-requisitions/PR-000042/edit', (c) => {
       if (c.path.startsWith('/items/A0001/dimensions'))
         return { itemNumber: 'A0001', storageDimensionGroup: 'SiteOnly', mandatory: ['Site'], source: 'group' };
       if (c.path.startsWith('/lookups')) return [];
-      if (c.method === 'PUT') return draft;
-      return draft;
+      if (c.method === 'PUT') return saved;
+      return saved;
     });
     const line = await screen.findByRole('group', { name: 'Line 1' });
     expect(await within(line).findByText(/Storage dimension group SiteOnly: Site mandatory/)).toBeInTheDocument();
@@ -174,7 +176,7 @@ describe('editing a draft requisition with item storage dimensions', () => {
     await waitFor(() => expect(calls.some((c) => c.method === 'PUT')).toBe(true));
     const put = calls.find((c) => c.method === 'PUT')!;
     expect(put.path).toBe('/purchase-requisitions/PR-000042');
-    expect(put.body).toMatchObject({ name: 'Office supplies', lines: [{ lineNumber: 1, itemNumber: 'A0001', site: '1', warehouse: null }] });
+    expect(put.body).toMatchObject({ name: 'Office supplies', lines: [{ lineNumber: 1, itemNumber: 'A0001', procurementCategory: null, site: '1', warehouse: null }] });
   }, 20000);
 
   it('blocks saving when a mandatory dimension is empty', async () => {
