@@ -52,10 +52,12 @@ public class PurchaseRequisitionTests : IClassFixture<ApiFactory>
             .And.Contain("\"DefaultRequestedDate\":\"2026-11-15T12:00:00Z\"")
             .And.NotContain("DefaultAccountingDate"); // nulls are not sent
 
-        var ops = odata.Batches.Single();
-        ops.Where(o => o.Method == BatchMethod.Post).Should().HaveCount(2).And.OnlyContain(o => o.EntitySetOrPath == "PurchaseRequisitionLines");
-        // Item lines get a trailing price-only PATCH so D365's re-pricing doesn't overwrite the entered price.
-        ops.Skip(2).Should().OnlyContain(o => o.Method == BatchMethod.Patch
+        var ops = odata.Batches.First();
+        ops.Should().HaveCount(2).And.OnlyContain(o => o.Method == BatchMethod.Post && o.EntitySetOrPath == "PurchaseRequisitionLines");
+        // Item lines with a price get a price-only PATCH in a second changeset (D365 re-prices on quantity;
+        // re-writing the same line inside the first changeset fails).
+        odata.Batches.Should().HaveCount(2);
+        odata.Batches[1].Should().ContainSingle(o => o.Method == BatchMethod.Patch
             && o.EntitySetOrPath == "PurchaseRequisitionLines(RequisitionNumber='PR-000042',RequisitionLineNumber=1)");
         var first = (Dictionary<string, object?>)ops[0].Body!;
         first["RequisitionNumber"].Should().Be("PR-000042");

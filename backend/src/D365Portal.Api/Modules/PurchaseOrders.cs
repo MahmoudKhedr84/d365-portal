@@ -260,7 +260,7 @@ public sealed class PurchaseOrderService(
             throw new D365Exception("D365 did not return the new purchase order number.", null, "d365_bad_response");
 
         var ops = lines.Select((l, i) => new BatchOperation(BatchMethod.Post, LineSet, LineBody(dataArea, number, i + 1, req, l))).ToList();
-        ops.AddRange(PricePatches(dataArea, number, lines.Select((l, i) => ((long)(i + 1), l))));
+        var pricing = PricePatches(dataArea, number, lines.Select((l, i) => ((long)(i + 1), l))).ToList();
         try
         {
             await odata.BatchAsync(s, ops, ct);
@@ -274,6 +274,16 @@ public sealed class PurchaseOrderService(
             }
             catch (D365Exception) { /* audited; the empty order can be deleted in D365 */ }
             throw new D365Exception($"The purchase order was not created. {ex.Message}", ex.StatusCode, ex.Code, ex);
+        }
+
+        // Separate step: re-writing a line already written in the same changeset fails in D365 (HTTP 500, empty infolog).
+        if (pricing.Count > 0)
+        {
+            try { await odata.BatchAsync(s, pricing, ct); }
+            catch (D365Exception ex)
+            {
+                throw new D365Exception($"Purchase order {number} was saved, but D365 did not keep the entered unit prices. {ex.Message}", ex.StatusCode, ex.Code, ex);
+            }
         }
 
         await audit.WriteAsync(new AuditLog
@@ -353,7 +363,7 @@ public sealed class PurchaseOrderService(
         ops.AddRange(patches);
         var next = existing.Count == 0 ? 1 : (int)existing.Keys.Max() + 1;
         ops.AddRange(posts.Select((l, i) => new BatchOperation(BatchMethod.Post, LineSet, LineBody(dataArea, number, next + i, req, l))));
-        ops.AddRange(PricePatches(dataArea, number, priced.Concat(posts.Select((l, i) => ((long)(next + i), l)))));
+        var pricing = PricePatches(dataArea, number, priced.Concat(posts.Select((l, i) => ((long)(next + i), l)))).ToList();
 
         try
         {
@@ -362,6 +372,16 @@ public sealed class PurchaseOrderService(
         catch (D365Exception ex)
         {
             throw new D365Exception($"The purchase order was not changed. {ex.Message}", ex.StatusCode, ex.Code, ex);
+        }
+
+        // Separate step: re-writing a line already written in the same changeset fails in D365 (HTTP 500, empty infolog).
+        if (pricing.Count > 0)
+        {
+            try { await odata.BatchAsync(s, pricing, ct); }
+            catch (D365Exception ex)
+            {
+                throw new D365Exception($"Purchase order {number} was saved, but D365 did not keep the entered unit prices. {ex.Message}", ex.StatusCode, ex.Code, ex);
+            }
         }
 
         await audit.WriteAsync(new AuditLog

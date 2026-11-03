@@ -50,7 +50,7 @@ public class PurchaseOrderTests
         header["OrderVendorAccountNumber"].Should().Be("V1");
         header.Should().NotContainKey("CurrencyCode"); // defaults from the vendor
 
-        var ops = odata.Batches.Single();
+        var ops = odata.Batches.First();
         var first = (Dictionary<string, object?>)ops[0].Body!;
         first["dataAreaId"].Should().Be("wfq");
         first["PurchaseOrderNumber"].Should().Be("PO-000007");
@@ -77,7 +77,7 @@ public class PurchaseOrderTests
             new CreatePoLineRequest("A", null, null, 1, null, 10, null, null, null, ItemSalesTaxGroup: "VAT15"),
             new CreatePoLineRequest("B", null, null, 1, null, 10, null, null, null, SalesTaxGroup: "EXEMPT")) with { SalesTaxGroup = "DOM" }, default);
         ((Dictionary<string, object?>)odata.Posts.Single().Body)["SalesTaxGroupCode"].Should().Be("DOM");
-        var ops = odata.Batches.Single();
+        var ops = odata.Batches.First();
         var l1 = (Dictionary<string, object?>)ops[0].Body!;
         l1["SalesTaxGroupCode"].Should().Be("DOM");
         l1["SalesTaxItemGroupCode"].Should().Be("VAT15");

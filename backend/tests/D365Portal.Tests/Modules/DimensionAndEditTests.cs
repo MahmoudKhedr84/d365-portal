@@ -120,7 +120,7 @@ public class DimensionAndEditTests
         var env = new Env { StorageGroupRow = """{"GroupName":"SiteWH","IsWarehouseMandatory":"No"}""" };
         env.OData.Created = _ => """{"RequisitionNumber":"PR-1"}""";
         await env.Pr().CreateAsync(PrReq(PrLine("A1", "1", "11")), default);
-        var line = (Dictionary<string, object?>)env.OData.Batches.Single()[0].Body!;
+        var line = (Dictionary<string, object?>)env.OData.Batches.First()[0].Body!;
         line["ReceivingSiteId"].Should().Be("1");
         line.Should().NotContainKey("ReceivingWarehouseId");
     }
@@ -131,7 +131,7 @@ public class DimensionAndEditTests
         var env = new Env();
         await env.Pr().UpdateAsync("PR-1", PrReq(PrLine("A1", "1", "11", lineNumber: 1), PrLine("A1", "2", "21")), default);
 
-        var ops = env.OData.Batches.Single();
+        var ops = env.OData.Batches.First();
         ops[0].Method.Should().Be(BatchMethod.Patch);
         ops[0].EntitySetOrPath.Should().Be("PurchaseRequisitionHeaders(RequisitionNumber='PR-1')");
         ((Dictionary<string, object?>)ops[0].Body!)["RequisitionName"].Should().Be("New name");
@@ -156,7 +156,7 @@ public class DimensionAndEditTests
     {
         var env = new Env();
         await env.Pr().UpdateAsync("PR-1", PrReq(PrLine("A1", "1", "11", lineNumber: 2)), default); // line 2 was B2
-        var ops = env.OData.Batches.Single();
+        var ops = env.OData.Batches.First();
         ops.Where(o => o.Method == BatchMethod.Delete).Should().HaveCount(2);
         ops.Single(o => o.Method == BatchMethod.Post).Body.As<Dictionary<string, object?>>()["RequisitionLineNumber"].Should().Be(3);
     }
@@ -209,7 +209,7 @@ public class DimensionAndEditTests
     {
         var env = StyleOnlyItem();
         await env.Pr().CreateAsync(PrReq(PrLine("A1", "1", "11") with { Style = "acdelco", Color = "Red" }), default);
-        var line = (Dictionary<string, object?>)env.OData.Batches.Single()[0].Body!;
+        var line = (Dictionary<string, object?>)env.OData.Batches.First()[0].Body!;
         line["ProductStyleId"].Should().Be("Acdelco");
         line.Should().NotContainKey("ProductColorId");
     }
@@ -231,7 +231,7 @@ public class DimensionAndEditTests
         (await missing.Should().ThrowAsync<AdminException>()).Which.Message.Should().Contain("Type is required").And.Contain("Year is required");
 
         await env.Pr().CreateAsync(PrReq(PrLine("A1", "1", "11") with { Model = "camry", Type = "Sedan", Year = "2025" }), default);
-        var line = (Dictionary<string, object?>)env.OData.Batches.Single()[0].Body!;
+        var line = (Dictionary<string, object?>)env.OData.Batches.First()[0].Body!;
         line["InventDimension1"].Should().Be("Camry");
         line["InventDimension2"].Should().Be("Sedan");
         line["InventDimension3"].Should().Be("2025");
@@ -261,7 +261,7 @@ public class DimensionAndEditTests
         var env = new Env { StorageGroupRow = """{"GroupName":"SiteWH","IsWarehouseMandatory":"Yes","IsWarehouseLocationMandatory":"Yes","IsInventoryStatusMandatory":"No"}""" };
         var line = new CreatePoLineRequest("A1", null, null, 2, null, null, null, null, null, Location: "BULK-01", InventoryStatus: "Available", LineNumber: 1);
         await env.Po().UpdateAsync("PO-1", PoReq(line), default);
-        var ops = env.OData.Batches.Single();
+        var ops = env.OData.Batches.First();
         var patch = ops.Single(o => o.Method == BatchMethod.Patch && o.EntitySetOrPath.StartsWith("PurchaseOrderLinesV2"));
         patch.EntitySetOrPath.Should().Be("PurchaseOrderLinesV2(dataAreaId='usmf',PurchaseOrderNumber='PO-1',LineNumber=1)");
         var body = (Dictionary<string, object?>)patch.Body!;

@@ -90,7 +90,7 @@ public class CaseAndJournalTests : IClassFixture<ApiFactory>
         var header = (Dictionary<string, object?>)odata.Posts.Single().Body;
         header["dataAreaId"].Should().Be("wfq");
         header["JournalName"].Should().Be("GenJrn");
-        var ops = odata.Batches.Single();
+        var ops = odata.Batches.First();
         var first = (Dictionary<string, object?>)ops[0].Body!;
         first["JournalBatchNumber"].Should().Be("GJ-0099");
         first["DebitAmount"].Should().Be(100m);
