@@ -123,6 +123,7 @@ describe('UsersPanel', () => {
 
 describe('ConnectionPanel', () => {
   const saved: Connection = {
+    useExtendedProductDimensions: false,
     environmentUrl: 'https://yelo-uat.sandbox.operations.dynamics.com',
     entraTenantId: '42f614c3-4fac-437c-b5dd-b5526cb26925',
     clientId: 'b9475d47-58bc-4204-85aa-948e7a4bff69',

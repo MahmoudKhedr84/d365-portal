@@ -15,7 +15,8 @@ public sealed record ConnectionDto(
     DateTimeOffset? LastTestedAt,
     bool? LastTestSucceeded,
     string? LastTestResult,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    bool UseExtendedProductDimensions = false);
 
 public sealed record TenantDto(
     Guid Id,
@@ -55,7 +56,9 @@ public sealed record SaveConnectionRequest(
     string ClientId,
     string? ClientSecret,
     string? ApiVersion,
-    bool IsActive = true);
+    bool IsActive = true,
+    /// <summary>Null = keep the stored value.</summary>
+    bool? UseExtendedProductDimensions = null);
 
 public sealed record CreateUserRequest(
     string Email,

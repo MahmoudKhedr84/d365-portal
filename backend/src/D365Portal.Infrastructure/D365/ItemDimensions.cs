@@ -226,11 +226,12 @@ public sealed class ItemDimensionResolver(ID365ODataClient odata, IMemoryCache c
     ];
 
     /// <summary>
-    /// True when <paramref name="entitySet"/> exposes the InventDimension1-3 fields (standard entities don't; they need
-    /// an entity extension). Probed once per environment with a $select and cached.
+    /// True when the tenant option is on and <paramref name="entitySet"/> exposes the InventDimension1-3 fields (standard
+    /// entities don't; they need an entity extension). Probed once per environment with a $select and cached.
     /// </summary>
     public async Task<bool> ExtraDimensionsSupportedAsync(D365ConnectionSettings s, string entitySet, CancellationToken ct)
     {
+        if (!s.ExtendedProductDimensions) return false; // tenant option off: never touch InventDimension1-3
         var key = $"extradims:{s.EnvironmentUrl}:{entitySet}";
         if (cache.TryGetValue<bool>(key, out var hit)) return hit;
         bool ok;

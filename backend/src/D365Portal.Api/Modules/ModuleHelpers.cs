@@ -101,8 +101,14 @@ public static class ModuleHelpers
         foreach (var (line, item, values) in lines)
         {
             if (string.IsNullOrWhiteSpace(item)) { result.Add(empty); continue; }
-            if (!rules.TryGetValue(item.Trim(), out var r)) { result.Add(values); continue; }
+            if (!rules.TryGetValue(item.Trim(), out var r))
+            {
+                result.Add(s.ExtendedProductDimensions ? values : values with { Model = null, Type = null, Year = null });
+                continue;
+            }
             var (kept, issues) = values.Apply(r);
+            // Model / Type / Year are only written when the tenant option is on.
+            if (!s.ExtendedProductDimensions) kept = kept with { Model = null, Type = null, Year = null };
             result.Add(kept);
             if (issues.Count > 0) problems.Add($"line {line} ({item.Trim()}): {string.Join(", ", issues)}");
         }

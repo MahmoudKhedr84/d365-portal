@@ -75,10 +75,13 @@ public class DimensionAndEditTests
             };
         }
 
+        /// <summary>Tenant option "Extended product dimensions" (Model / Type / Year).</summary>
+        public bool Extended { get; set; }
+
         public PurchaseRequisitionService Pr()
         {
             var cache = new MemoryCache(new MemoryCacheOptions());
-            return new PurchaseRequisitionService(new StaticSettings(), OData, Tenant(), new ListAudit(),
+            return new PurchaseRequisitionService(new StaticSettings(Extended), OData, Tenant(), new ListAudit(),
                 new LookupService(OData, cache), new ItemDimensionResolver(OData, cache));
         }
 
@@ -217,7 +220,7 @@ public class DimensionAndEditTests
     [Fact]
     public async Task Model_type_year_come_from_the_item_variants_and_are_sent_as_InventDimension1_to_3()
     {
-        var env = new Env();
+        var env = new Env { Extended = true };
         var baseRows = env.OData.Rows;
         env.OData.Rows = (set, q) => set switch
         {
@@ -235,6 +238,23 @@ public class DimensionAndEditTests
         line["InventDimension1"].Should().Be("Camry");
         line["InventDimension2"].Should().Be("Sedan");
         line["InventDimension3"].Should().Be("2025");
+    }
+
+    [Fact]
+    public async Task Model_type_year_are_ignored_when_the_tenant_option_is_off()
+    {
+        var env = new Env(); // option off
+        var baseRows = env.OData.Rows;
+        env.OData.Rows = (set, q) => set switch
+        {
+            "ReleasedProductsV2" => """[{"ItemNumber":"A1","StorageDimensionGroupName":"SiteWH","ProductType":"Item","ProductSubType":"ProductMaster","ProductNumber":"A1"}]""",
+            "ReleasedProductVariantsV2" => """[{"ItemNumber":"A1","InventDimension1":"Corolla"}]""",
+            _ => baseRows(set, q),
+        };
+        env.OData.Created = _ => """{"RequisitionNumber":"PR-1"}""";
+        await env.Pr().CreateAsync(PrReq(PrLine("A1", "1", "11") with { Model = "Corolla" }), default);
+        var line = (Dictionary<string, object?>)env.OData.Batches.First()[0].Body!;
+        line.Should().NotContainKey("InventDimension1");
     }
 
     // ---------------- purchase orders ----------------

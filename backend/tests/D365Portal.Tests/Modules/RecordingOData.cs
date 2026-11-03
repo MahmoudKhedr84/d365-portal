@@ -50,10 +50,10 @@ public sealed class RecordingOData : ID365ODataClient
         Task.FromResult<IReadOnlyList<string>>(Array.Empty<string>());
 }
 
-public sealed class StaticSettings : ID365SettingsProvider
+public sealed class StaticSettings(bool extendedProductDimensions = false) : ID365SettingsProvider
 {
     public Task<D365ConnectionSettings> GetAsync(Guid tenantId, CancellationToken ct) =>
-        Task.FromResult(new D365ConnectionSettings(tenantId, "https://x.operations.dynamics.com", "t", "c", "s"));
+        Task.FromResult(new D365ConnectionSettings(tenantId, "https://x.operations.dynamics.com", "t", "c", "s", extendedProductDimensions));
 }
 
 public sealed class ListAudit : IAuditLogger

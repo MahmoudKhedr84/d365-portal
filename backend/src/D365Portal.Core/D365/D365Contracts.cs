@@ -6,7 +6,9 @@ public sealed record D365ConnectionSettings(
     string EnvironmentUrl,
     string EntraTenantId,
     string ClientId,
-    string ClientSecret)
+    string ClientSecret,
+    /// <summary>Tenant option: Model / Type / Year (InventDimension1-3) are exposed by this environment's entities.</summary>
+    bool ExtendedProductDimensions = false)
 {
     public override string ToString() => $"D365ConnectionSettings {{ TenantId = {TenantId}, EnvironmentUrl = {EnvironmentUrl}, ClientId = {ClientId} }}";
 }

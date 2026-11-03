@@ -44,6 +44,7 @@ const empty: ConnectionForm = {
   clientSecret: '',
   apiVersion: '',
   isActive: true,
+  useExtendedProductDimensions: false,
 };
 
 const fromConnection = (c: Connection): ConnectionForm => ({
@@ -53,6 +54,7 @@ const fromConnection = (c: Connection): ConnectionForm => ({
   clientSecret: '',
   apiVersion: c.apiVersion ?? '',
   isActive: c.isActive,
+  useExtendedProductDimensions: c.useExtendedProductDimensions ?? false,
 });
 
 export function ConnectionStatusBadge({ connection }: { connection: Connection | null | undefined }) {
@@ -160,6 +162,11 @@ export function ConnectionPanel({ scope }: { scope: AdminScope }) {
             </Field>
             <Field className={s.full}>
               <Switch checked={form.isActive} label={form.isActive ? 'Active' : 'Inactive'} onChange={(_, d) => set('isActive', d.checked)} />
+            </Field>
+            <Field className={s.full}
+              hint="Turn on only for environments where the procurement line and released product variant entities were extended with InventDimension1-3 (e.g. YELO's Model / Type / Year). Items that use them then ask for those values.">
+              <Switch checked={!!form.useExtendedProductDimensions} label="Extended product dimensions (Model / Type / Year)"
+                onChange={(_, d) => set('useExtendedProductDimensions', d.checked)} />
             </Field>
           </div>
 

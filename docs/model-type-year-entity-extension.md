@@ -26,8 +26,12 @@ For each: add the same fields to the entity's staging table extension, build, sy
 *Data management → Framework parameters → Entity settings → Refresh entity list*.
 
 ## Portal behaviour
-- On first use the portal probes each entity with `$select=InventDimension1,InventDimension2,InventDimension3`
-  (cached 1 hour per environment). Until the extension is deployed nothing changes.
+**Tenant option, off by default:** *Admin → tenant → D365 connection → "Extended product dimensions (Model / Type / Year)"*
+(`d365_connections.UseExtendedProductDimensions`). Turn it on only for the tenant whose environment has the extension
+(YELO holding sandbox) after the X++ deployment. While it is off the portal never reads or writes InventDimension1-3.
+
+- With the option on, on first use the portal also probes each entity with `$select=InventDimension1,InventDimension2,InventDimension3`
+  (cached 1 hour per environment). If the probe fails (fields not deployed yet), the dimensions are not offered.
 - After deployment: for a product master, every dimension that has values in the item's released variants is
   shown as a required dropdown with those values; the line is sent with `InventDimension1-3`; Draft edits read
   them back. The server validates the same rule (`422 product_dimension_required`).

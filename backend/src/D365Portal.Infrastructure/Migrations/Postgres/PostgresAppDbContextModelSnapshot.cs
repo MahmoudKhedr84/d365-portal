@@ -83,6 +83,7 @@ namespace D365Portal.Infrastructure.Migrations.Postgres
                     b.Property<string>("LastTestResult").HasMaxLength(2000).HasColumnType("character varying(2000)");
                     b.Property<Guid>("TenantId").HasColumnType("uuid");
                     b.Property<DateTimeOffset>("UpdatedAt").HasColumnType("timestamp with time zone");
+                    b.Property<bool>("UseExtendedProductDimensions").HasColumnType("boolean");
 
                     b.HasKey("Id");
                     b.HasIndex("TenantId").IsUnique();

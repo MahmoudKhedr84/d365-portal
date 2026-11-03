@@ -148,6 +148,7 @@ public sealed class AdminService(
         connection.ClientId = req.ClientId.Trim().ToLowerInvariant();
         connection.ApiVersion = string.IsNullOrWhiteSpace(req.ApiVersion) ? null : req.ApiVersion.Trim();
         connection.IsActive = req.IsActive;
+        if (req.UseExtendedProductDimensions is { } ext) connection.UseExtendedProductDimensions = ext;
         connection.UpdatedAt = clock.GetUtcNow();
         if (newSecret is not null) connection.ClientSecretEncrypted = secrets.Protect(newSecret);
         if (credentialsChanged) { connection.LastTestedAt = null; connection.LastTestResult = null; }
@@ -157,7 +158,7 @@ public sealed class AdminService(
         tokens.Invalidate(tenantId);
 
         await Audit(tenantId, "D365Connection", existing is null ? "Create" : "Update",
-            $"url={url}; entraTenant={connection.EntraTenantId}; clientId={connection.ClientId}; secretChanged={newSecret is not null}; active={connection.IsActive}", ct);
+            $"url={url}; entraTenant={connection.EntraTenantId}; clientId={connection.ClientId}; secretChanged={newSecret is not null}; active={connection.IsActive}; extendedProductDimensions={connection.UseExtendedProductDimensions}", ct);
         return ToDto(connection);
     }
 
@@ -398,7 +399,8 @@ public sealed class AdminService(
             : c.LastTestResult.StartsWith("OK: ", StringComparison.Ordinal) ? c.LastTestResult[4..]
             : c.LastTestResult.StartsWith("ERROR: ", StringComparison.Ordinal) ? c.LastTestResult[7..]
             : c.LastTestResult,
-        c.UpdatedAt);
+        c.UpdatedAt,
+        c.UseExtendedProductDimensions);
 
     private static UserDto ToDto(AppUser u) => new(
         u.Id, u.Email, u.DisplayName, u.Role.ToString(), u.DefaultCompany,

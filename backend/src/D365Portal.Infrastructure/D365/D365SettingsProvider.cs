@@ -25,6 +25,6 @@ public sealed class D365SettingsProvider(AppDbContext db, ISecretProtector secre
                 "The stored client secret can't be decrypted. An administrator must enter the client secret again.",
                 null, D365ErrorCodes.ConnectionInvalid, ex);
         }
-        return new D365ConnectionSettings(c.TenantId, c.EnvironmentUrl, c.EntraTenantId, c.ClientId, secret);
+        return new D365ConnectionSettings(c.TenantId, c.EnvironmentUrl, c.EntraTenantId, c.ClientId, secret, c.UseExtendedProductDimensions);
     }
 }

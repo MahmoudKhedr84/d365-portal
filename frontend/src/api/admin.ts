@@ -14,6 +14,8 @@ export const connectionSchema = z.object({
   lastTestSucceeded: z.boolean().nullable(),
   lastTestResult: z.string().nullable(),
   updatedAt: z.string(),
+  /** Tenant option: the environment exposes Model / Type / Year (InventDimension1-3) on its entities. */
+  useExtendedProductDimensions: z.boolean().optional().default(false),
 });
 export type Connection = z.infer<typeof connectionSchema>;
 
@@ -71,6 +73,7 @@ export const connectionFormSchema = z.object({
   clientSecret: z.string().optional(),
   apiVersion: z.string().trim().max(32).optional(),
   isActive: z.boolean(),
+  useExtendedProductDimensions: z.boolean().optional(),
 });
 export type ConnectionForm = z.infer<typeof connectionFormSchema>;
 

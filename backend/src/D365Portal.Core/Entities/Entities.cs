@@ -56,6 +56,11 @@ public class D365Connection : ITenantOwned
     public string ClientSecretEncrypted { get; set; } = string.Empty;
     /// <summary>Optional OData API version hint; null = environment default.</summary>
     public string? ApiVersion { get; set; }
+    /// <summary>
+    /// The environment exposes the generic product dimensions InventDimension1-3 (e.g. YELO's Model / Type / Year)
+    /// on the procurement line and released variant entities (needs a D365 entity extension). Off by default.
+    /// </summary>
+    public bool UseExtendedProductDimensions { get; set; }
     public bool IsActive { get; set; } = true;
     public DateTimeOffset? LastTestedAt { get; set; }
     public string? LastTestResult { get; set; }
