@@ -253,6 +253,7 @@ public sealed class PurchaseOrderService(
             throw new D365Exception("D365 did not return the new purchase order number.", null, "d365_bad_response");
 
         var ops = lines.Select((l, i) => new BatchOperation(BatchMethod.Post, LineSet, LineBody(dataArea, number, i + 1, req, l))).ToList();
+        ops.AddRange(PricePatches(dataArea, number, lines.Select((l, i) => ((long)(i + 1), l))));
         try
         {
             await odata.BatchAsync(s, ops, ct);
@@ -329,11 +330,13 @@ public sealed class PurchaseOrderService(
         var kept = new HashSet<long>();
         var patches = new List<BatchOperation>();
         var posts = new List<CreatePoLineRequest>();
+        var priced = new List<(long, CreatePoLineRequest)>();
         foreach (var l in lines)
         {
             if (l.LineNumber is { } n && existing.ContainsKey(n) && !IsNewOrReplaced(current, l))
             {
                 kept.Add(n);
+                priced.Add((n, l));
                 patches.Add(new BatchOperation(BatchMethod.Patch, LineKey(dataArea, number, n), PatchBody(req, l)));
             }
             else posts.Add(l);
@@ -343,6 +346,7 @@ public sealed class PurchaseOrderService(
         ops.AddRange(patches);
         var next = existing.Count == 0 ? 1 : (int)existing.Keys.Max() + 1;
         ops.AddRange(posts.Select((l, i) => new BatchOperation(BatchMethod.Post, LineSet, LineBody(dataArea, number, next + i, req, l))));
+        ops.AddRange(PricePatches(dataArea, number, priced.Concat(posts.Select((l, i) => ((long)(next + i), l)))));
 
         try
         {
@@ -378,6 +382,12 @@ public sealed class PurchaseOrderService(
             || (string.IsNullOrWhiteSpace(l.ItemNumber) &&
                 !string.Equals(Blank(old.ProcurementCategory), Blank(l.ProcurementCategory), StringComparison.OrdinalIgnoreCase));
     }
+
+    /// <summary>D365 re-prices item lines on quantity/item; a trailing price-only PATCH in the same changeset keeps the user's price.</summary>
+    private static IEnumerable<BatchOperation> PricePatches(string dataArea, string number, IEnumerable<(long Line, CreatePoLineRequest L)> lines) =>
+        lines.Where(x => !string.IsNullOrWhiteSpace(x.L.ItemNumber) && x.L.UnitPrice is not null)
+            .Select(x => new BatchOperation(BatchMethod.Patch, LineKey(dataArea, number, x.Line),
+                new Dictionary<string, object?> { ["PurchasePrice"] = x.L.UnitPrice, ["CalculateLineAmount"] = "Yes" }));
 
     private static string LineKey(string dataArea, string number, long line) =>
         KeyPath(LineSet, new Dictionary<string, object?> { ["dataAreaId"] = dataArea, ["PurchaseOrderNumber"] = number, ["LineNumber"] = line });

@@ -53,7 +53,10 @@ public class PurchaseRequisitionTests : IClassFixture<ApiFactory>
             .And.NotContain("DefaultAccountingDate"); // nulls are not sent
 
         var ops = odata.Batches.Single();
-        ops.Should().HaveCount(2).And.OnlyContain(o => o.Method == BatchMethod.Post && o.EntitySetOrPath == "PurchaseRequisitionLines");
+        ops.Where(o => o.Method == BatchMethod.Post).Should().HaveCount(2).And.OnlyContain(o => o.EntitySetOrPath == "PurchaseRequisitionLines");
+        // Item lines get a trailing price-only PATCH so D365's re-pricing doesn't overwrite the entered price.
+        ops.Skip(2).Should().OnlyContain(o => o.Method == BatchMethod.Patch
+            && o.EntitySetOrPath == "PurchaseRequisitionLines(RequisitionNumber='PR-000042',RequisitionLineNumber=1)");
         var first = (Dictionary<string, object?>)ops[0].Body!;
         first["RequisitionNumber"].Should().Be("PR-000042");
         first["RequisitionLineNumber"].Should().Be(1);

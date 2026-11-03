@@ -230,6 +230,7 @@ public sealed class PurchaseRequisitionService(
             throw new D365Exception("D365 did not return the new requisition number.", null, "d365_bad_response");
 
         var ops = lines.Select((l, i) => new BatchOperation(BatchMethod.Post, LineSet, LineBody(number, i + 1, company, req, l))).ToList();
+        ops.AddRange(PricePatches(number, lines.Select((l, i) => (i + 1, l))));
         try
         {
             await odata.BatchAsync(s, ops, ct);
@@ -298,11 +299,13 @@ public sealed class PurchaseRequisitionService(
         var kept = new HashSet<int>();
         var patches = new List<BatchOperation>();
         var posts = new List<CreatePrLineRequest>();
+        var priced = new List<(int, CreatePrLineRequest)>();
         foreach (var l in lines)
         {
             if (l.LineNumber is { } n && existing.ContainsKey(n) && !IsNewOrReplaced(current, l))
             {
                 kept.Add(n);
+                priced.Add((n, l));
                 patches.Add(new BatchOperation(BatchMethod.Patch, LineKey(number, n), PatchBody(req, l)));
             }
             else posts.Add(l);
@@ -313,6 +316,7 @@ public sealed class PurchaseRequisitionService(
         ops.AddRange(patches);
         var next = existing.Count == 0 ? 1 : existing.Keys.Max() + 1;
         ops.AddRange(posts.Select((l, i) => new BatchOperation(BatchMethod.Post, LineSet, LineBody(number, next + i, company, req, l))));
+        ops.AddRange(PricePatches(number, priced.Concat(posts.Select((l, i) => (next + i, l)))));
 
         try
         {
@@ -349,6 +353,15 @@ public sealed class PurchaseRequisitionService(
             || (string.IsNullOrWhiteSpace(l.ItemNumber) &&
                 !string.Equals(Blank(old.ProcurementCategory), Blank(l.ProcurementCategory), StringComparison.OrdinalIgnoreCase));
     }
+
+    /// <summary>
+    /// D365 re-prices an item line when its quantity/item is set (trade agreements / item price), overwriting the
+    /// price sent in the same write. A trailing PATCH with only the price, in the same changeset, makes the user's price stick.
+    /// </summary>
+    private static IEnumerable<BatchOperation> PricePatches(string number, IEnumerable<(int Line, CreatePrLineRequest L)> lines) =>
+        lines.Where(x => !string.IsNullOrWhiteSpace(x.L.ItemNumber) && x.L.UnitPrice is not null)
+            .Select(x => new BatchOperation(BatchMethod.Patch, LineKey(number, x.Line),
+                new Dictionary<string, object?> { ["PurchasePrice"] = x.L.UnitPrice }));
 
     private static string LineKey(string number, int line) =>
         KeyPath(LineSet, new Dictionary<string, object?> { ["RequisitionNumber"] = number, ["RequisitionLineNumber"] = line });
