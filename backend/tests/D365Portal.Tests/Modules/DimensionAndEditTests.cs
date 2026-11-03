@@ -170,6 +170,50 @@ public class DimensionAndEditTests
         env.OData.Batches.Should().BeEmpty();
     }
 
+    // ---------------- product dimensions ----------------
+
+    private static Env StyleOnlyItem()
+    {
+        var env = new Env();
+        var baseRows = env.OData.Rows;
+        env.OData.Rows = (set, q) => set switch
+        {
+            "ReleasedProductsV2" => """[{"ItemNumber":"A1","StorageDimensionGroupName":"SiteWH","ProductType":"Item","ProductSubType":"ProductMaster","ProductNumber":"A1"}]""",
+            "ProductMasterStyles" => """[{"ProductMasterNumber":"A1","ProductStyleId":"Acdelco"},{"ProductMasterNumber":"A1","ProductStyleId":"Mobil"}]""",
+            _ => baseRows(set, q),
+        };
+        env.OData.Created = _ => """{"RequisitionNumber":"PR-1"}""";
+        return env;
+    }
+
+    [Fact]
+    public async Task Product_master_line_requires_its_style()
+    {
+        var env = StyleOnlyItem();
+        var act = () => env.Pr().CreateAsync(PrReq(PrLine("A1", "1", "11")), default);
+        var ex = (await act.Should().ThrowAsync<AdminException>()).Which;
+        ex.Code.Should().Be("product_dimension_required");
+        ex.Message.Should().Contain("line 1 (A1): Style is required");
+    }
+
+    [Fact]
+    public async Task Product_master_line_rejects_a_style_not_assigned_to_the_product()
+    {
+        var env = StyleOnlyItem();
+        var act = () => env.Pr().CreateAsync(PrReq(PrLine("A1", "1", "11") with { Style = "Castrol" }), default);
+        (await act.Should().ThrowAsync<AdminException>()).Which.Message.Should().Contain("Style 'Castrol' is not assigned");
+    }
+
+    [Fact]
+    public async Task Product_master_line_sends_only_the_dimensions_the_product_uses()
+    {
+        var env = StyleOnlyItem();
+        await env.Pr().CreateAsync(PrReq(PrLine("A1", "1", "11") with { Style = "acdelco", Color = "Red" }), default);
+        var line = (Dictionary<string, object?>)env.OData.Batches.Single()[0].Body!;
+        line["ProductStyleId"].Should().Be("Acdelco");
+        line.Should().NotContainKey("ProductColorId");
+    }
+
     // ---------------- purchase orders ----------------
 
     private static CreatePoRequest PoReq(params CreatePoLineRequest[] lines) =>

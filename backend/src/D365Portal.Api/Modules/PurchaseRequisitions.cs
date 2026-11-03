@@ -387,7 +387,14 @@ public sealed class PurchaseRequisitionService(
         var applied = await ApplyStorageDimensionsAsync(dimensions, s, company,
             lines.Select((l, i) => (i + 1, l.ItemNumber, new Infrastructure.D365.StorageDimensionValues(l.Site, l.Warehouse))).ToList(),
             SupportedDimensions, ct);
-        return lines.Select((l, i) => l with { Site = applied[i].Site, Warehouse = applied[i].Warehouse }).ToList();
+        var product = await ApplyProductDimensionsAsync(dimensions, s, company,
+            lines.Select((l, i) => (i + 1, l.ItemNumber, new Infrastructure.D365.ProductDimensionValues(l.Configuration, l.Size, l.Color, l.Style, l.Version))).ToList(), ct);
+        return lines.Select((l, i) => l with
+        {
+            Site = applied[i].Site, Warehouse = applied[i].Warehouse,
+            Configuration = product[i].Configuration, Size = product[i].Size, Color = product[i].Color,
+            Style = product[i].Style, Version = product[i].Version,
+        }).ToList();
     }
 
     internal static Dictionary<string, object?> LineBody(string number, int lineNumber, string company, CreatePrRequest req, CreatePrLineRequest l)

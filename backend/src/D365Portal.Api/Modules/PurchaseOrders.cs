@@ -423,10 +423,14 @@ public sealed class PurchaseOrderService(
             req.Lines.Select((l, i) => (i + 1, l.ItemNumber, new StorageDimensionValues(
                 Blank(l.Site) ?? Blank(req.Site), Blank(l.Warehouse) ?? Blank(req.Warehouse), l.Location, l.InventoryStatus))).ToList(),
             SupportedDimensions, ct);
+        var product = await ApplyProductDimensionsAsync(dimensions, s, company,
+            req.Lines.Select((l, i) => (i + 1, l.ItemNumber, new ProductDimensionValues(l.Configuration, l.Size, l.Color, l.Style, l.Version))).ToList(), ct);
         return req.Lines.Select((l, i) => l with
         {
             Site = applied[i].Site, Warehouse = applied[i].Warehouse,
             Location = applied[i].Location, InventoryStatus = applied[i].InventoryStatus,
+            Configuration = product[i].Configuration, Size = product[i].Size, Color = product[i].Color,
+            Style = product[i].Style, Version = product[i].Version,
         }).ToList();
     }
 

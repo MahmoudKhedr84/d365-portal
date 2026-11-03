@@ -24,12 +24,28 @@ export const DIM_LABEL: Record<StorageDim, string> = {
   InventoryStatus: 'Inventory status',
 };
 
+/** Product dimensions (product masters). The ones an item uses are mandatory; values come from the product master. */
+export const PRODUCT_DIMENSIONS = ['Configuration', 'Size', 'Color', 'Style', 'Version'] as const;
+export type ProductDim = (typeof PRODUCT_DIMENSIONS)[number];
+export const PRODUCT_DIM_FIELD: Record<ProductDim, 'configuration' | 'size' | 'color' | 'style' | 'version'> = {
+  Configuration: 'configuration',
+  Size: 'size',
+  Color: 'color',
+  Style: 'style',
+  Version: 'version',
+};
+
 export const itemDimensionRulesSchema = z.object({
   itemNumber: z.string(),
   storageDimensionGroup: z.string().nullable(),
   mandatory: z.array(z.enum(STORAGE_DIMENSIONS)),
   /** group = from the storage dimension group; default = group setup unreadable (Site + Warehouse assumed); none = service item. */
   source: z.string(),
+  /** Product dimensions the item uses, with the values assigned to its product master. */
+  productDimensions: z
+    .array(z.object({ dimension: z.enum(PRODUCT_DIMENSIONS), values: z.array(z.string()) }))
+    .nullish()
+    .transform((v) => v ?? []),
 });
 export type ItemDimensionRules = z.infer<typeof itemDimensionRulesSchema>;
 

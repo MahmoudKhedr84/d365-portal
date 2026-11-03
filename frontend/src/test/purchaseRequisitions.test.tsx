@@ -107,7 +107,9 @@ describe('purchase requisition pages', () => {
           { id: 'A0001', name: 'Printer paper', extra: { PurchaseUnitSymbol: 'box', ProductSubType: 'ProductMaster', ProductDimensionGroupName: 'Style' } },
           { id: 'A0002', name: 'Old toner', extra: { OnHold: 'Yes' } },
         ];
-      if (c.path.startsWith('/lookups/productVariants')) return [{ id: 'A0001 : : : Classic', name: 'Paper classic', extra: { ProductStyleId: 'Classic' } }];
+      if (c.path.startsWith('/items/A0001/dimensions'))
+        return { itemNumber: 'A0001', storageDimensionGroup: 'None', mandatory: [], source: 'group',
+          productDimensions: [{ dimension: 'Style', values: ['Classic', 'Premium'] }] };
       if (c.path.startsWith('/lookups')) return [];
       if (c.path === '/purchase-requisitions' && c.method === 'POST') return detail;
       if (c.path.startsWith('/purchase-requisitions/')) return detail;
@@ -126,12 +128,14 @@ describe('purchase requisition pages', () => {
     expect(await screen.findByRole('option', { name: /A0002.*On hold/ }, { timeout: 3000 })).toHaveAttribute('aria-disabled', 'true');
     await userEvent.click(await screen.findByRole('option', { name: /A0001/ }, { timeout: 3000 }));
 
-    // Product master → a variant is required.
+    // Product master using Style only → only a Style field (values assigned to the product), and it is required.
+    const line = screen.getByRole('group', { name: 'Line 1' });
+    const style = await within(line).findByRole('combobox', { name: /^Style/ });
+    expect(within(line).queryByRole('combobox', { name: /Variant|^Color|^Size/ })).toBeNull();
     await userEvent.click(screen.getByRole('button', { name: 'Create requisition' }));
-    expect(await screen.findByText('Select the variant (product dimensions).')).toBeInTheDocument();
-    const variant = within(screen.getByRole('group', { name: 'Line 1' })).getByRole('combobox', { name: /Variant/ });
-    await userEvent.click(variant);
-    await userEvent.click(await screen.findByRole('option', { name: /Classic/ }, { timeout: 3000 }));
+    expect(await screen.findByText('Select the style.')).toBeInTheDocument();
+    await userEvent.click(style);
+    await userEvent.click(await screen.findByRole('option', { name: 'Classic' }, { timeout: 3000 }));
 
     await userEvent.click(screen.getByRole('button', { name: 'Create requisition' }));
     await waitFor(() => expect(calls.some((c) => c.method === 'POST')).toBe(true));

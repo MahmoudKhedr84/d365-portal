@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { ApiRequest } from './client';
-import { DIM_FIELD, DIM_LABEL, STORAGE_DIMENSIONS } from './itemDimensions';
+import { DIM_FIELD, DIM_LABEL, PRODUCT_DIMENSIONS, PRODUCT_DIM_FIELD, STORAGE_DIMENSIONS } from './itemDimensions';
 
 export const PR_STATUSES = ['Draft', 'InReview', 'Rejected', 'Approved', 'Cancelled', 'Closed'] as const;
 export const prStatusLabel = (s: string | null | undefined) => (s === 'InReview' ? 'In review' : (s ?? '—'));
@@ -92,8 +92,9 @@ export const prLineFormSchema = z
     dimsLoading: z.boolean().optional(),
     /** Edit only: the existing D365 line number. */
     lineNumber: z.number().optional(),
-    /** True when the item is a product master: a variant (product dimensions) must be chosen. */
-    needsVariant: z.boolean().optional(),
+    /** Product dimensions the item uses (e.g. Style only); each must be chosen. Set by the line editor from the item's product master. */
+    requiredProductDims: z.array(z.enum(PRODUCT_DIMENSIONS)).optional(),
+    /** Saved variant label (read-only, from D365). */
     variant: z.string().trim().optional(),
     configuration: z.string().optional(),
     size: z.string().optional(),
@@ -108,8 +109,9 @@ export const prLineFormSchema = z
     if (l.kind === 'item' && !l.itemNumber) ctx.addIssue({ code: 'custom', path: ['itemNumber'], message: 'Select an item.' });
     if (l.kind === 'item' && l.onHold)
       ctx.addIssue({ code: 'custom', path: ['itemNumber'], message: 'This item is on hold for purchasing in this company.' });
-    if (l.kind === 'item' && l.needsVariant && !l.variant)
-      ctx.addIssue({ code: 'custom', path: ['variant'], message: 'Select the variant (product dimensions).' });
+    if (l.kind === 'item')
+      for (const d of l.requiredProductDims ?? [])
+        if (!l[PRODUCT_DIM_FIELD[d]]) ctx.addIssue({ code: 'custom', path: [PRODUCT_DIM_FIELD[d]], message: `Select the ${d.toLowerCase()}.` });
     if (l.kind === 'item' && l.itemNumber && l.dimsLoading)
       ctx.addIssue({ code: 'custom', path: ['itemNumber'], message: 'Loading the item’s storage dimensions…' });
     if (l.kind === 'item')
@@ -223,7 +225,6 @@ export function lineFromDetail(
     warehouse: v(l.warehouse),
     location: v(l.location),
     inventoryStatus: v(l.inventoryStatus),
-    needsVariant: item && !!l.variant,
     variant: v(l.variant),
     configuration: v(l.configuration),
     size: v(l.size),

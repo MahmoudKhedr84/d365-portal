@@ -1,9 +1,9 @@
 import { useEffect } from 'react';
-import { Button, Caption1, Field, Input, Spinner, Tab, TabList, makeStyles, tokens } from '@fluentui/react-components';
+import { Button, Caption1, Dropdown, Field, Input, Option, Spinner, Tab, TabList, makeStyles, tokens } from '@fluentui/react-components';
 import { Delete20Regular } from '@fluentui/react-icons';
 import { useQuery } from '@tanstack/react-query';
 import { useApi } from '@/api/ApiProvider';
-import { DIM_FIELD, DIM_LABEL, getItemDimensions, type StorageDim } from '@/api/itemDimensions';
+import { DIM_FIELD, DIM_LABEL, PRODUCT_DIMENSIONS, PRODUCT_DIM_FIELD, getItemDimensions, type ProductDim, type StorageDim } from '@/api/itemDimensions';
 import type { PrLineForm } from '@/api/purchaseRequisitions';
 import { LookupCombobox } from '@/components/LookupCombobox';
 import { errorMessage } from '@/components/notify';
@@ -35,11 +35,8 @@ const useStyles = makeStyles({
   muted: { color: tokens.colorNeutralForeground3 },
 });
 
-export const isProductMaster = (extra?: Record<string, string | null> | null) =>
-  !!extra && (extra.ProductSubType === 'ProductMaster' || !!extra.ProductDimensionGroupName);
-
 const noVariant = { variant: '', configuration: '', size: '', color: '', style: '', version: '' };
-const noDims = { site: '', warehouse: '', location: '', inventoryStatus: '', requiredDims: undefined, dimsLoading: false };
+const noDims = { site: '', warehouse: '', location: '', inventoryStatus: '', requiredDims: undefined, requiredProductDims: undefined, dimsLoading: false };
 
 const sameDims = (a: readonly string[] | undefined, b: readonly string[]) =>
   !!a && a.length === b.length && a.every((x, i) => x === b[i]);
@@ -76,14 +73,24 @@ export function ProcurementLineEditor({
     staleTime: 10 * 60_000,
   });
   const required = rules.data ? dimensions.filter((d) => rules.data.mandatory.includes(d)) : undefined;
+  // Product dimensions the item's product master uses (e.g. Style only), with the values assigned to it.
+  const productOptions = rules.data?.productDimensions ?? [];
+  const requiredProduct: ProductDim[] | undefined = rules.data ? productOptions.map((o) => o.dimension) : undefined;
 
   useEffect(() => {
     if (!item) return;
     if (rules.isPending && !l.dimsLoading) { onChange({ dimsLoading: true }); return; }
     if (!required) return;
-    if (sameDims(l.requiredDims, required) && !l.dimsLoading) return;
-    const patch: Partial<ProcurementLine> = { requiredDims: required, dimsLoading: false };
+    if (!requiredProduct) return;
+    if (sameDims(l.requiredDims, required) && sameDims(l.requiredProductDims, requiredProduct) && !l.dimsLoading) return;
+    const patch: Partial<ProcurementLine> = { requiredDims: required, requiredProductDims: requiredProduct, dimsLoading: false };
     for (const d of dimensions) if (!required.includes(d)) patch[DIM_FIELD[d]] = '';
+    // Product master: keep only the dimensions it uses; pick the value when there is just one.
+    if (requiredProduct.length > 0) {
+      for (const d of PRODUCT_DIMENSIONS) if (!requiredProduct.includes(d)) patch[PRODUCT_DIM_FIELD[d]] = '';
+      for (const o of productOptions)
+        if (o.values.length === 1 && !l[PRODUCT_DIM_FIELD[o.dimension]]) patch[PRODUCT_DIM_FIELD[o.dimension]] = o.values[0];
+    }
     if (required.includes('Site') && !l.site && defaults?.site) patch.site = defaults.site;
     if (required.includes('Warehouse') && !l.warehouse && defaults?.warehouse && (!defaults.site || (patch.site ?? l.site) === defaults.site))
       patch.warehouse = defaults.warehouse;
@@ -93,7 +100,7 @@ export function ProcurementLineEditor({
 
   // If the rules can't be loaded, don't block the user: D365 still validates on save.
   useEffect(() => {
-    if (rules.isError && l.dimsLoading) onChange({ dimsLoading: false, requiredDims: undefined });
+    if (rules.isError && l.dimsLoading) onChange({ dimsLoading: false, requiredDims: undefined, requiredProductDims: undefined });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rules.isError]);
 
@@ -131,7 +138,7 @@ export function ProcurementLineEditor({
       <div className={s.head}>
         <strong>Line {i + 1}</strong>
         <TabList size="small" selectedValue={l.kind}
-          onTabSelect={(_, d) => onChange({ ...noVariant, ...noDims, kind: d.value as ProcurementLine['kind'], itemNumber: '', procurementCategory: '', needsVariant: false, onHold: false })}>
+          onTabSelect={(_, d) => onChange({ ...noVariant, ...noDims, kind: d.value as ProcurementLine['kind'], itemNumber: '', procurementCategory: '', onHold: false })}>
           <Tab value="item">Item</Tab>
           <Tab value="category">Category</Tab>
         </TabList>
@@ -143,12 +150,10 @@ export function ProcurementLineEditor({
           <LookupCombobox lookup="products" label="Item" required value={l.itemNumber || null} validationMessage={le.itemNumber}
             disabledNote={(it) => (it.extra?.OnHold === 'Yes' ? 'On hold for purchasing' : null)}
             onChange={(id, item) => onChange({
-              ...noVariant,
-              ...(id === l.itemNumber ? {} : noDims),
+              ...(id === l.itemNumber ? {} : { ...noVariant, ...noDims }),
               itemNumber: id ?? '',
               description: item?.name ?? l.description,
               unit: item?.extra?.PurchaseUnitSymbol || l.unit,
-              needsVariant: isProductMaster(item?.extra),
               onHold: item?.extra?.OnHold === 'Yes',
               itemSalesTaxGroup: item?.extra?.PurchaseSalesTaxItemGroupCode || l.itemSalesTaxGroup,
             })} />
@@ -156,18 +161,18 @@ export function ProcurementLineEditor({
           <LookupCombobox lookup="procurementCategories" label="Procurement category" required value={l.procurementCategory || null}
             validationMessage={le.procurementCategory} onChange={(id) => onChange({ procurementCategory: id ?? '' })} />
         )}
-        {l.kind === 'item' && l.needsVariant && l.itemNumber && (
-          <LookupCombobox key={`variant-${l.itemNumber}`} lookup="productVariants" label="Variant (product dimensions)" required
-            value={l.variant || null} filters={{ item: l.itemNumber }} validationMessage={le.variant}
-            onChange={(id, v) => onChange({
-              variant: id ?? '',
-              configuration: v?.extra?.ProductConfigurationId ?? '',
-              size: v?.extra?.ProductSizeId ?? '',
-              color: v?.extra?.ProductColorId ?? '',
-              style: v?.extra?.ProductStyleId ?? '',
-              version: v?.extra?.ProductVersionId ?? '',
-            })} />
-        )}
+        {l.kind === 'item' && item && productOptions.map(({ dimension: d, values }) => {
+          const field = PRODUCT_DIM_FIELD[d];
+          const value = l[field] ?? '';
+          return (
+            <Field key={`${item}-${d}`} label={d} required validationMessage={le[field]}>
+              <Dropdown placeholder={`Select ${d.toLowerCase()}`} value={value} selectedOptions={value ? [value] : []}
+                onOptionSelect={(_, o) => onChange({ [field]: o.optionValue ?? '', variant: '' })}>
+                {values.map((v) => <Option key={v} value={v}>{v}</Option>)}
+              </Dropdown>
+            </Field>
+          );
+        })}
         <Field className={s.wide} label="Description" required={l.kind === 'category'} validationMessage={le.description}>
           <Input value={l.description ?? ''} maxLength={60} onChange={(_, d) => onChange({ description: d.value })} />
         </Field>

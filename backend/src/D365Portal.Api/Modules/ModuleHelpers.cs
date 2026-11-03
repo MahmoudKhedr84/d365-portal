@@ -84,6 +84,33 @@ public static class ModuleHelpers
         return result;
     }
 
+    /// <summary>
+    /// Applies each item line's product dimensions: only the dimensions the product master uses are kept, each is
+    /// required, and its value must be one assigned to the product master (otherwise 422 <c>product_dimension_required</c>).
+    /// Lines without an item get no product dimensions.
+    /// </summary>
+    public static async Task<IReadOnlyList<ProductDimensionValues>> ApplyProductDimensionsAsync(
+        ItemDimensionResolver resolver, D365ConnectionSettings s, string company,
+        IReadOnlyList<(int Line, string? Item, ProductDimensionValues Values)> lines, CancellationToken ct)
+    {
+        var rules = await resolver.GetAsync(s, company, lines.Select(l => l.Item ?? string.Empty), ct);
+        var empty = new ProductDimensionValues(null, null, null, null, null);
+        var result = new List<ProductDimensionValues>(lines.Count);
+        var problems = new List<string>();
+        foreach (var (line, item, values) in lines)
+        {
+            if (string.IsNullOrWhiteSpace(item)) { result.Add(empty); continue; }
+            if (!rules.TryGetValue(item.Trim(), out var r)) { result.Add(values); continue; }
+            var (kept, issues) = values.Apply(r);
+            result.Add(kept);
+            if (issues.Count > 0) problems.Add($"line {line} ({item.Trim()}): {string.Join(", ", issues)}");
+        }
+        if (problems.Count > 0)
+            throw new AdminException(422, "product_dimension_required",
+                $"Product dimensions are missing or not valid — {string.Join("; ", problems)}.");
+        return result;
+    }
+
     /// <summary>OData key path for batch operations, e.g. PurchaseRequisitionLines(RequisitionNumber='1',RequisitionLineNumber=2).</summary>
     public static string KeyPath(string set, IReadOnlyDictionary<string, object?> key) => set + ODataKey.Format(key);
 }

@@ -16,9 +16,57 @@ public sealed record ItemDimensionRules(
     string? StorageDimensionGroup,
     IReadOnlyList<StorageDimension> Mandatory,
     /// <summary>"group" = read from the storage dimension group; "default" = group setup not readable, Site + Warehouse assumed; "none" = non-stocked/service item.</summary>
-    string Source)
+    string Source,
+    /// <summary>
+    /// Product dimensions the item uses (product masters only), each with the values assigned to the product
+    /// master in D365 (ProductMaster{Configurations,Sizes,Colors,Styles,Versions}). Every listed dimension is mandatory.
+    /// </summary>
+    IReadOnlyList<ProductDimensionOption>? ProductDimensions = null)
 {
     public bool IsMandatory(StorageDimension d) => Mandatory.Contains(d);
+}
+
+/// <summary>Product dimensions a procurement line can carry.</summary>
+public enum ProductDimension { Configuration, Size, Color, Style, Version }
+
+public sealed record ProductDimensionOption(ProductDimension Dimension, IReadOnlyList<string> Values);
+
+/// <summary>Line values for the product dimensions; <see cref="Apply"/> keeps the item's dimensions only and checks the values.</summary>
+public sealed record ProductDimensionValues(string? Configuration, string? Size, string? Color, string? Style, string? Version)
+{
+    public string? Get(ProductDimension d) => d switch
+    {
+        ProductDimension.Configuration => Configuration,
+        ProductDimension.Size => Size,
+        ProductDimension.Color => Color,
+        ProductDimension.Style => Style,
+        _ => Version,
+    };
+
+    /// <summary>
+    /// Clears dimensions the item doesn't use, keeps the others (with D365's casing of the value), and returns one
+    /// problem per missing or unassigned value.
+    /// </summary>
+    public (ProductDimensionValues Values, IReadOnlyList<string> Problems) Apply(ItemDimensionRules rules)
+    {
+        var options = rules.ProductDimensions ?? [];
+        // Not a product master, or its values can't be read: leave the line as entered (D365 still validates).
+        if (options.Count == 0) return (this, []);
+        var problems = new List<string>();
+        string? Keep(ProductDimension d)
+        {
+            var o = options.FirstOrDefault(x => x.Dimension == d);
+            if (o is null) return null;
+            var v = Get(d)?.Trim();
+            if (string.IsNullOrEmpty(v)) { problems.Add($"{d} is required"); return null; }
+            var match = o.Values.FirstOrDefault(x => string.Equals(x, v, StringComparison.OrdinalIgnoreCase));
+            if (match is null && o.Values.Count > 0) { problems.Add($"{d} '{v}' is not assigned to this product"); return v; }
+            return match ?? v;
+        }
+        var kept = new ProductDimensionValues(Keep(ProductDimension.Configuration), Keep(ProductDimension.Size),
+            Keep(ProductDimension.Color), Keep(ProductDimension.Style), Keep(ProductDimension.Version));
+        return (kept, problems);
+    }
 }
 
 public static class ItemDimensionRuleParser
@@ -131,7 +179,7 @@ public sealed class ItemDimensionResolver(ID365ODataClient odata, IMemoryCache c
         var key = $"itemdims:{s.EnvironmentUrl}:{company.ToLowerInvariant()}:{item.ToUpperInvariant()}";
         if (cache.TryGetValue<ItemDimensionRules>(key, out var hit) && hit is not null) return hit;
 
-        var (group, productType) = await ReadItemAsync(s, company, item, ct);
+        var (group, productType, productNumber, isMaster) = await ReadItemAsync(s, company, item, ct);
         ItemDimensionRules rules;
         if (string.Equals(productType, "Service", StringComparison.OrdinalIgnoreCase))
             rules = new ItemDimensionRules(item, group, [StorageDimension.Site], "none");
@@ -144,11 +192,47 @@ public sealed class ItemDimensionResolver(ID365ODataClient odata, IMemoryCache c
                 ? new ItemDimensionRules(item, group, ItemDimensionRuleParser.DefaultMandatory, "default")
                 : new ItemDimensionRules(item, group, mandatory, "group");
         }
+        if (isMaster)
+            rules = rules with { ProductDimensions = await ReadProductDimensionsAsync(s, productNumber ?? item, ct) };
         cache.Set(key, rules, Ttl);
         return rules;
     }
 
-    private async Task<(string? Group, string? ProductType)> ReadItemAsync(D365ConnectionSettings s, string company, string item, CancellationToken ct)
+    /// <summary>Product master value entities: (dimension, entity set, value field). Global tables, keyed by product number.</summary>
+    public static readonly (ProductDimension Dim, string Set, string Field)[] ProductMasterSets =
+    [
+        (ProductDimension.Configuration, "ProductMasterConfigurations", "ProductConfigurationId"),
+        (ProductDimension.Size, "ProductMasterSizes", "ProductSizeId"),
+        (ProductDimension.Color, "ProductMasterColors", "ProductColorId"),
+        (ProductDimension.Style, "ProductMasterStyles", "ProductStyleId"),
+        (ProductDimension.Version, "ProductMasterVersions", "ProductVersionId"),
+    ];
+
+    /// <summary>A product dimension is used by the item when its product master has at least one value assigned.</summary>
+    private async Task<IReadOnlyList<ProductDimensionOption>> ReadProductDimensionsAsync(D365ConnectionSettings s, string productNumber, CancellationToken ct)
+    {
+        var result = new List<ProductDimensionOption>();
+        foreach (var (dim, set, field) in ProductMasterSets)
+        {
+            try
+            {
+                var page = await odata.GetAsync(s, set, new ODataQuery
+                {
+                    Filter = $"ProductMasterNumber eq {ODataFilter.Literal(productNumber)}",
+                    Select = ["ProductMasterNumber", field],
+                    Top = 500,
+                }, ct);
+                var values = page.Rows.Select(r => Read(r, field)).Where(v => !string.IsNullOrWhiteSpace(v))
+                    .Select(v => v!).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(v => v, StringComparer.OrdinalIgnoreCase).ToList();
+                if (values.Count > 0) result.Add(new ProductDimensionOption(dim, values));
+            }
+            catch (D365Exception ex) when (ex.StatusCode is 404 or 400) { /* entity not exposed: dimension not offered */ }
+        }
+        return result;
+    }
+
+    private async Task<(string? Group, string? ProductType, string? ProductNumber, bool IsMaster)> ReadItemAsync(
+        D365ConnectionSettings s, string company, string item, CancellationToken ct)
     {
         foreach (var set in ProductSets)
         {
@@ -158,16 +242,18 @@ public sealed class ItemDimensionResolver(ID365ODataClient odata, IMemoryCache c
                 {
                     CrossCompany = true,
                     Filter = ODataFilter.And(ODataFilter.Company(company), $"ItemNumber eq {ODataFilter.Literal(item)}"),
-                    Select = ["ItemNumber", "StorageDimensionGroupName", "ProductType"],
+                    Select = ["ItemNumber", "StorageDimensionGroupName", "ProductType", "ProductSubType", "ProductNumber", "ProductDimensionGroupName"],
                     Top = 1,
                 }, ct);
-                if (page.Rows.Count == 0) return (null, null);
+                if (page.Rows.Count == 0) return (null, null, null, false);
                 var r = page.Rows[0];
-                return (Read(r, "StorageDimensionGroupName"), Read(r, "ProductType"));
+                var isMaster = string.Equals(Read(r, "ProductSubType"), "ProductMaster", StringComparison.OrdinalIgnoreCase)
+                    || !string.IsNullOrWhiteSpace(Read(r, "ProductDimensionGroupName"));
+                return (Read(r, "StorageDimensionGroupName"), Read(r, "ProductType"), Read(r, "ProductNumber"), isMaster);
             }
             catch (D365Exception ex) when (ex.StatusCode is 404 or 400) { /* try next candidate */ }
         }
-        return (null, null);
+        return (null, null, null, false);
     }
 
     /// <summary>Mandatory dimensions of a storage dimension group, or null when its setup can't be read.</summary>

@@ -28,6 +28,15 @@ Rules on every item line (create and edit):
 
 PO header default site / warehouse pre-fill a line's mandatory site / warehouse. New lookups: `warehouseLocations` (filtered by `warehouse`) and `inventoryStatuses`.
 
+## Item product dimensions (product masters)
+The *Variant* picker was removed. `GET /api/items/{item}/dimensions` also returns `productDimensions`: for a product master
+(`ProductSubType = ProductMaster`), each of Configuration / Size / Color / Style / Version that has values assigned to the
+product master in `ProductMasterConfigurations` / `ProductMasterSizes` / `ProductMasterColors` / `ProductMasterStyles` /
+`ProductMasterVersions` (filtered by `ProductMasterNumber` = the item's `ProductNumber`).
+- The line shows one required dropdown per used dimension (e.g. only **Style**), listing only the assigned values; a single value is pre-selected.
+- Dimensions the product doesn't use are cleared. The server checks the same rule: `422 product_dimension_required` for a missing value or one not assigned to the product (this is D365's "The Style X has not been assigned to the product Y").
+- If those entities can't be read, the line values are sent as entered and D365 validates.
+
 ## Not covered / to confirm in UAT
 - The storage dimension group entity was not exposed in the demo environment used for development; confirm it in YELO UAT with the entity check. Until then the fallback (Site + Warehouse) applies.
 - Tracking dimensions (batch / serial) aren't asked for: D365 captures them at receipt, not on the order.
