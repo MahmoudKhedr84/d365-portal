@@ -46,7 +46,11 @@ public sealed record PoLineDto(
     string? Size = null,
     string? Color = null,
     string? Style = null,
-    string? Version = null);
+    string? Version = null,
+    /// <summary>Model / Type / Year: generic product dimensions InventDimension1-3 (when the entity exposes them).</summary>
+    string? Model = null,
+    string? Type = null,
+    string? Year = null);
 
 public sealed record PoDetailDto(
     string PurchaseOrderNumber,
@@ -88,6 +92,9 @@ public sealed record CreatePoLineRequest(
     string? ItemSalesTaxGroup = null,
     string? Location = null,
     string? InventoryStatus = null,
+    string? Model = null,
+    string? Type = null,
+    string? Year = null,
     /// <summary>Edit only: the existing D365 line this row updates. Null = a new line.</summary>
     long? LineNumber = null);
 
@@ -409,6 +416,10 @@ public sealed class PurchaseOrderService(
             ["ProductColorId"] = isItem ? Blank(l.Color) : null,
             ["ProductStyleId"] = isItem ? Blank(l.Style) : null,
             ["ProductVersionId"] = isItem ? Blank(l.Version) : null,
+            // Only sent when set: entities without the InventDimension1-3 extension don't have these fields.
+            ["InventDimension1"] = isItem ? Blank(l.Model) : null,
+            ["InventDimension2"] = isItem ? Blank(l.Type) : null,
+            ["InventDimension3"] = isItem ? Blank(l.Year) : null,
         });
         body["ReceivingSiteId"] = Blank(l.Site) ?? string.Empty;
         body["ReceivingWarehouseId"] = Blank(l.Warehouse) ?? string.Empty;
@@ -434,13 +445,14 @@ public sealed class PurchaseOrderService(
                 Blank(l.Site) ?? Blank(req.Site), Blank(l.Warehouse) ?? Blank(req.Warehouse), l.Location, l.InventoryStatus))).ToList(),
             SupportedDimensions, ct);
         var product = await ApplyProductDimensionsAsync(dimensions, s, company,
-            req.Lines.Select((l, i) => (i + 1, l.ItemNumber, new ProductDimensionValues(l.Configuration, l.Size, l.Color, l.Style, l.Version))).ToList(), ct);
+            req.Lines.Select((l, i) => (i + 1, l.ItemNumber, new ProductDimensionValues(l.Configuration, l.Size, l.Color, l.Style, l.Version, l.Model, l.Type, l.Year))).ToList(), ct);
         return req.Lines.Select((l, i) => l with
         {
             Site = applied[i].Site, Warehouse = applied[i].Warehouse,
             Location = applied[i].Location, InventoryStatus = applied[i].InventoryStatus,
             Configuration = product[i].Configuration, Size = product[i].Size, Color = product[i].Color,
             Style = product[i].Style, Version = product[i].Version,
+            Model = product[i].Model, Type = product[i].Type, Year = product[i].Year,
         }).ToList();
     }
 
@@ -470,10 +482,20 @@ public sealed class PurchaseOrderService(
             ["ProductColorId"] = isItem ? Blank(l.Color) : null,
             ["ProductStyleId"] = isItem ? Blank(l.Style) : null,
             ["ProductVersionId"] = isItem ? Blank(l.Version) : null,
+            // Only sent when set: entities without the InventDimension1-3 extension don't have these fields.
+            ["InventDimension1"] = isItem ? Blank(l.Model) : null,
+            ["InventDimension2"] = isItem ? Blank(l.Type) : null,
+            ["InventDimension3"] = isItem ? Blank(l.Year) : null,
             ["SalesTaxGroupCode"] = Blank(l.SalesTaxGroup) ?? Blank(req.SalesTaxGroup),
             ["SalesTaxItemGroupCode"] = Blank(l.ItemSalesTaxGroup),
         });
     }
+
+    /// <summary>Line fields to read; adds InventDimension1-3 (Model / Type / Year) when this environment's entity exposes them.</summary>
+    private async Task<IReadOnlyList<string>> LineSelectAsync(D365ConnectionSettings s, CancellationToken ct) =>
+        await dimensions.ExtraDimensionsSupportedAsync(s, LineSet, ct)
+            ? [.. LineFields, .. Infrastructure.D365.ItemDimensionResolver.ExtraDimensionFields.Select(x => x.Field)]
+            : LineFields;
 
     private async Task<PoDetailDto?> LoadAsync(D365ConnectionSettings s, string company, string number, CancellationToken ct)
     {
@@ -484,7 +506,7 @@ public sealed class PurchaseOrderService(
 
         var lines = await odata.GetAsync(s, LineSet, new ODataQuery
         {
-            CrossCompany = true, Select = LineFields, Filter = key, OrderBy = "LineNumber", Top = 500,
+            CrossCompany = true, Select = await LineSelectAsync(s, ct), Filter = key, OrderBy = "LineNumber", Top = 500,
         }, ct);
         var lineDtos = lines.Rows.Select(r => new PoLineDto(
             (long)Num(r, "LineNumber"), Str(r, "ItemNumber"), Str(r, "ProcurementProductCategoryName"), JoinVariant(r),
@@ -493,7 +515,7 @@ public sealed class PurchaseOrderService(
             Str(r, "PurchaseOrderLineStatus"), Str(r, "SalesTaxGroupCode"), Str(r, "SalesTaxItemGroupCode"),
             Str(r, "ReceivingWarehouseLocationId"), Str(r, "OrderedInventoryStatusId"),
             Str(r, "ProductConfigurationId"), Str(r, "ProductSizeId"), Str(r, "ProductColorId"), Str(r, "ProductStyleId"),
-            Str(r, "ProductVersionId"))).ToList();
+            Str(r, "ProductVersionId"), Str(r, "InventDimension1"), Str(r, "InventDimension2"), Str(r, "InventDimension3"))).ToList();
 
         return new PoDetailDto(
             Str(h, "PurchaseOrderNumber") ?? number, company, Str(h, "OrderVendorAccountNumber"), Str(h, "PurchaseOrderName"),

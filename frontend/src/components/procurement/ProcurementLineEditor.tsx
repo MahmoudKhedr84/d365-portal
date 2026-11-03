@@ -35,7 +35,7 @@ const useStyles = makeStyles({
   muted: { color: tokens.colorNeutralForeground3 },
 });
 
-const noVariant = { variant: '', configuration: '', size: '', color: '', style: '', version: '' };
+const noVariant = { variant: '', configuration: '', size: '', color: '', style: '', version: '', model: '', type: '', year: '' };
 const noDims = { site: '', warehouse: '', location: '', inventoryStatus: '', requiredDims: undefined, requiredProductDims: undefined, dimsLoading: false };
 
 const sameDims = (a: readonly string[] | undefined, b: readonly string[]) =>

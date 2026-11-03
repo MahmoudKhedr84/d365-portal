@@ -214,6 +214,29 @@ public class DimensionAndEditTests
         line.Should().NotContainKey("ProductColorId");
     }
 
+    [Fact]
+    public async Task Model_type_year_come_from_the_item_variants_and_are_sent_as_InventDimension1_to_3()
+    {
+        var env = new Env();
+        var baseRows = env.OData.Rows;
+        env.OData.Rows = (set, q) => set switch
+        {
+            "ReleasedProductsV2" => """[{"ItemNumber":"A1","StorageDimensionGroupName":"SiteWH","ProductType":"Item","ProductSubType":"ProductMaster","ProductNumber":"A1"}]""",
+            "ReleasedProductVariantsV2" => """[{"ItemNumber":"A1","InventDimension1":"Corolla","InventDimension2":"Sedan","InventDimension3":"2024"},{"ItemNumber":"A1","InventDimension1":"Camry","InventDimension2":"Sedan","InventDimension3":"2025"}]""",
+            _ => baseRows(set, q),
+        };
+        env.OData.Created = _ => """{"RequisitionNumber":"PR-1"}""";
+
+        var missing = () => env.Pr().CreateAsync(PrReq(PrLine("A1", "1", "11") with { Model = "Corolla" }), default);
+        (await missing.Should().ThrowAsync<AdminException>()).Which.Message.Should().Contain("Type is required").And.Contain("Year is required");
+
+        await env.Pr().CreateAsync(PrReq(PrLine("A1", "1", "11") with { Model = "camry", Type = "Sedan", Year = "2025" }), default);
+        var line = (Dictionary<string, object?>)env.OData.Batches.Single()[0].Body!;
+        line["InventDimension1"].Should().Be("Camry");
+        line["InventDimension2"].Should().Be("Sedan");
+        line["InventDimension3"].Should().Be("2025");
+    }
+
     // ---------------- purchase orders ----------------
 
     private static CreatePoRequest PoReq(params CreatePoLineRequest[] lines) =>

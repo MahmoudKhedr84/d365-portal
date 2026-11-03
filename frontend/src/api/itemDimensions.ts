@@ -25,14 +25,19 @@ export const DIM_LABEL: Record<StorageDim, string> = {
 };
 
 /** Product dimensions (product masters). The ones an item uses are mandatory; values come from the product master. */
-export const PRODUCT_DIMENSIONS = ['Configuration', 'Size', 'Color', 'Style', 'Version'] as const;
+export const PRODUCT_DIMENSIONS = ['Configuration', 'Size', 'Color', 'Style', 'Version', 'Model', 'Type', 'Year'] as const;
 export type ProductDim = (typeof PRODUCT_DIMENSIONS)[number];
-export const PRODUCT_DIM_FIELD: Record<ProductDim, 'configuration' | 'size' | 'color' | 'style' | 'version'> = {
+export type ProductDimField = 'configuration' | 'size' | 'color' | 'style' | 'version' | 'model' | 'type' | 'year';
+export const PRODUCT_DIM_FIELD: Record<ProductDim, ProductDimField> = {
   Configuration: 'configuration',
   Size: 'size',
   Color: 'color',
   Style: 'style',
   Version: 'version',
+  /** Model / Type / Year: generic product dimensions InventDimension1-3. */
+  Model: 'model',
+  Type: 'type',
+  Year: 'year',
 };
 
 export const itemDimensionRulesSchema = z.object({

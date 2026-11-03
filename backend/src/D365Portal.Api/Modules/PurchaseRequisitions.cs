@@ -46,7 +46,11 @@ public sealed record PrLineDto(
     string? Size = null,
     string? Color = null,
     string? Style = null,
-    string? Version = null);
+    string? Version = null,
+    /// <summary>Model / Type / Year: generic product dimensions InventDimension1-3 (when the entity exposes them).</summary>
+    string? Model = null,
+    string? Type = null,
+    string? Year = null);
 
 public sealed record PrTotalDto(string Currency, decimal Amount);
 
@@ -84,6 +88,9 @@ public sealed record CreatePrLineRequest(
     string? Version = null,
     string? SalesTaxGroup = null,
     string? ItemSalesTaxGroup = null,
+    string? Model = null,
+    string? Type = null,
+    string? Year = null,
     /// <summary>Edit only: the existing D365 line this row updates. Null = a new line.</summary>
     int? LineNumber = null);
 
@@ -384,6 +391,10 @@ public sealed class PurchaseRequisitionService(
             ["ProductColorId"] = isItem ? Blank(l.Color) : null,
             ["ProductStyleId"] = isItem ? Blank(l.Style) : null,
             ["ProductVersionId"] = isItem ? Blank(l.Version) : null,
+            // Only sent when set: entities without the InventDimension1-3 extension don't have these fields.
+            ["InventDimension1"] = isItem ? Blank(l.Model) : null,
+            ["InventDimension2"] = isItem ? Blank(l.Type) : null,
+            ["InventDimension3"] = isItem ? Blank(l.Year) : null,
         });
         body["VendorAccountNumber"] = Blank(l.Vendor) ?? string.Empty;
         body["ReceivingSiteId"] = Blank(l.Site) ?? string.Empty;
@@ -401,12 +412,13 @@ public sealed class PurchaseRequisitionService(
             lines.Select((l, i) => (i + 1, l.ItemNumber, new Infrastructure.D365.StorageDimensionValues(l.Site, l.Warehouse))).ToList(),
             SupportedDimensions, ct);
         var product = await ApplyProductDimensionsAsync(dimensions, s, company,
-            lines.Select((l, i) => (i + 1, l.ItemNumber, new Infrastructure.D365.ProductDimensionValues(l.Configuration, l.Size, l.Color, l.Style, l.Version))).ToList(), ct);
+            lines.Select((l, i) => (i + 1, l.ItemNumber, new Infrastructure.D365.ProductDimensionValues(l.Configuration, l.Size, l.Color, l.Style, l.Version, l.Model, l.Type, l.Year))).ToList(), ct);
         return lines.Select((l, i) => l with
         {
             Site = applied[i].Site, Warehouse = applied[i].Warehouse,
             Configuration = product[i].Configuration, Size = product[i].Size, Color = product[i].Color,
             Style = product[i].Style, Version = product[i].Version,
+            Model = product[i].Model, Type = product[i].Type, Year = product[i].Year,
         }).ToList();
     }
 
@@ -436,10 +448,20 @@ public sealed class PurchaseRequisitionService(
             ["ProductColorId"] = isItem ? Blank(l.Color) : null,
             ["ProductStyleId"] = isItem ? Blank(l.Style) : null,
             ["ProductVersionId"] = isItem ? Blank(l.Version) : null,
+            // Only sent when set: entities without the InventDimension1-3 extension don't have these fields.
+            ["InventDimension1"] = isItem ? Blank(l.Model) : null,
+            ["InventDimension2"] = isItem ? Blank(l.Type) : null,
+            ["InventDimension3"] = isItem ? Blank(l.Year) : null,
             ["SalesTaxGroupCode"] = Blank(l.SalesTaxGroup),
             ["SalesTaxItemGroupCode"] = Blank(l.ItemSalesTaxGroup),
         });
     }
+
+    /// <summary>Line fields to read; adds InventDimension1-3 (Model / Type / Year) when this environment's entity exposes them.</summary>
+    private async Task<IReadOnlyList<string>> LineSelectAsync(D365ConnectionSettings s, CancellationToken ct) =>
+        await dimensions.ExtraDimensionsSupportedAsync(s, LineSet, ct)
+            ? [.. LineFields, .. Infrastructure.D365.ItemDimensionResolver.ExtraDimensionFields.Select(x => x.Field)]
+            : LineFields;
 
     private async Task<PrDetailDto?> LoadAsync(D365ConnectionSettings s, string number, CancellationToken ct)
     {
@@ -450,7 +472,7 @@ public sealed class PurchaseRequisitionService(
 
         var lines = await odata.GetAsync(s, LineSet, new ODataQuery
         {
-            CrossCompany = true, Select = LineFields, Filter = key, OrderBy = "RequisitionLineNumber", Top = 500,
+            CrossCompany = true, Select = await LineSelectAsync(s, ct), Filter = key, OrderBy = "RequisitionLineNumber", Top = 500,
         }, ct);
         var lineDtos = lines.Rows.Select(r => new PrLineDto(
             (int)Num(r, "RequisitionLineNumber"), Str(r, "BuyingLegalEntityId"), Str(r, "ItemNumber"),
@@ -460,7 +482,7 @@ public sealed class PurchaseRequisitionService(
             Date(r, "RequestedDate"), Str(r, "LineStatus"),
             JoinVariant(r), Str(r, "SalesTaxGroupCode"), Str(r, "SalesTaxItemGroupCode"),
             Str(r, "ProductConfigurationId"), Str(r, "ProductSizeId"), Str(r, "ProductColorId"), Str(r, "ProductStyleId"),
-            Str(r, "ProductVersionId"))).ToList();
+            Str(r, "ProductVersionId"), Str(r, "InventDimension1"), Str(r, "InventDimension2"), Str(r, "InventDimension3"))).ToList();
         var totals = lineDtos.GroupBy(l => l.Currency ?? string.Empty)
             .Select(g => new PrTotalDto(g.Key, g.Sum(l => l.LineAmount))).ToList();
 

@@ -27,12 +27,17 @@ public sealed record ItemDimensionRules(
 }
 
 /// <summary>Product dimensions a procurement line can carry.</summary>
-public enum ProductDimension { Configuration, Size, Color, Style, Version }
+/// <remarks>
+/// Model / Type / Year are the generic product dimensions InventDimension1-3 (YELO's CTK extension). They are
+/// only used when the D365 entities expose fields with those names (see <see cref="ItemDimensionResolver.ExtraDimensionFields"/>).
+/// </remarks>
+public enum ProductDimension { Configuration, Size, Color, Style, Version, Model, Type, Year }
 
 public sealed record ProductDimensionOption(ProductDimension Dimension, IReadOnlyList<string> Values);
 
 /// <summary>Line values for the product dimensions; <see cref="Apply"/> keeps the item's dimensions only and checks the values.</summary>
-public sealed record ProductDimensionValues(string? Configuration, string? Size, string? Color, string? Style, string? Version)
+public sealed record ProductDimensionValues(string? Configuration, string? Size, string? Color, string? Style, string? Version,
+    string? Model = null, string? Type = null, string? Year = null)
 {
     public string? Get(ProductDimension d) => d switch
     {
@@ -40,7 +45,10 @@ public sealed record ProductDimensionValues(string? Configuration, string? Size,
         ProductDimension.Size => Size,
         ProductDimension.Color => Color,
         ProductDimension.Style => Style,
-        _ => Version,
+        ProductDimension.Version => Version,
+        ProductDimension.Model => Model,
+        ProductDimension.Type => Type,
+        _ => Year,
     };
 
     /// <summary>
@@ -64,7 +72,8 @@ public sealed record ProductDimensionValues(string? Configuration, string? Size,
             return match ?? v;
         }
         var kept = new ProductDimensionValues(Keep(ProductDimension.Configuration), Keep(ProductDimension.Size),
-            Keep(ProductDimension.Color), Keep(ProductDimension.Style), Keep(ProductDimension.Version));
+            Keep(ProductDimension.Color), Keep(ProductDimension.Style), Keep(ProductDimension.Version),
+            Keep(ProductDimension.Model), Keep(ProductDimension.Type), Keep(ProductDimension.Year));
         return (kept, problems);
     }
 }
@@ -193,7 +202,7 @@ public sealed class ItemDimensionResolver(ID365ODataClient odata, IMemoryCache c
                 : new ItemDimensionRules(item, group, mandatory, "group");
         }
         if (isMaster)
-            rules = rules with { ProductDimensions = await ReadProductDimensionsAsync(s, productNumber ?? item, ct) };
+            rules = rules with { ProductDimensions = await ReadProductDimensionsAsync(s, company, item, productNumber ?? item, ct) };
         cache.Set(key, rules, Ttl);
         return rules;
     }
@@ -208,10 +217,45 @@ public sealed class ItemDimensionResolver(ID365ODataClient odata, IMemoryCache c
         (ProductDimension.Version, "ProductMasterVersions", "ProductVersionId"),
     ];
 
-    /// <summary>A product dimension is used by the item when its product master has at least one value assigned.</summary>
-    private async Task<IReadOnlyList<ProductDimensionOption>> ReadProductDimensionsAsync(D365ConnectionSettings s, string productNumber, CancellationToken ct)
+    /// <summary>Generic product dimensions (InventDimension1-3) and the entity field that carries each one.</summary>
+    public static readonly (ProductDimension Dim, string Field)[] ExtraDimensionFields =
+    [
+        (ProductDimension.Model, "InventDimension1"),
+        (ProductDimension.Type, "InventDimension2"),
+        (ProductDimension.Year, "InventDimension3"),
+    ];
+
+    /// <summary>
+    /// True when <paramref name="entitySet"/> exposes the InventDimension1-3 fields (standard entities don't; they need
+    /// an entity extension). Probed once per environment with a $select and cached.
+    /// </summary>
+    public async Task<bool> ExtraDimensionsSupportedAsync(D365ConnectionSettings s, string entitySet, CancellationToken ct)
+    {
+        var key = $"extradims:{s.EnvironmentUrl}:{entitySet}";
+        if (cache.TryGetValue<bool>(key, out var hit)) return hit;
+        bool ok;
+        try
+        {
+            await odata.GetAsync(s, entitySet, new ODataQuery
+            {
+                CrossCompany = true, Select = ExtraDimensionFields.Select(x => x.Field).ToList(), Top = 1,
+            }, ct);
+            ok = true;
+        }
+        catch (D365Exception ex) when (ex.StatusCode is 400 or 404) { ok = false; }
+        cache.Set(key, ok, TimeSpan.FromHours(1));
+        return ok;
+    }
+
+    /// <summary>
+    /// A product dimension is used by the item when its product master has at least one value assigned. Model / Type / Year
+    /// come from the item's released variants (when that entity exposes InventDimension1-3).
+    /// </summary>
+    private async Task<IReadOnlyList<ProductDimensionOption>> ReadProductDimensionsAsync(
+        D365ConnectionSettings s, string company, string item, string productNumber, CancellationToken ct)
     {
         var result = new List<ProductDimensionOption>();
+        await AddExtraDimensionsAsync(s, company, item, result, ct);
         foreach (var (dim, set, field) in ProductMasterSets)
         {
             try
@@ -228,7 +272,27 @@ public sealed class ItemDimensionResolver(ID365ODataClient odata, IMemoryCache c
             }
             catch (D365Exception ex) when (ex.StatusCode is 404 or 400) { /* entity not exposed: dimension not offered */ }
         }
-        return result;
+        return result.OrderBy(o => (int)o.Dimension).ToList();
+    }
+
+    public const string VariantSet = "ReleasedProductVariantsV2";
+
+    private async Task AddExtraDimensionsAsync(D365ConnectionSettings s, string company, string item, List<ProductDimensionOption> result, CancellationToken ct)
+    {
+        if (!await ExtraDimensionsSupportedAsync(s, VariantSet, ct)) return;
+        var page = await odata.GetAsync(s, VariantSet, new ODataQuery
+        {
+            CrossCompany = true,
+            Filter = ODataFilter.And(ODataFilter.Company(company), $"ItemNumber eq {ODataFilter.Literal(item)}"),
+            Select = ["ItemNumber", .. ExtraDimensionFields.Select(x => x.Field)],
+            Top = 1000,
+        }, ct);
+        foreach (var (dim, field) in ExtraDimensionFields)
+        {
+            var values = page.Rows.Select(r => Read(r, field)).Where(v => !string.IsNullOrWhiteSpace(v)).Select(v => v!)
+                .Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(v => v, StringComparer.OrdinalIgnoreCase).ToList();
+            if (values.Count > 0) result.Add(new ProductDimensionOption(dim, values));
+        }
     }
 
     private async Task<(string? Group, string? ProductType, string? ProductNumber, bool IsMaster)> ReadItemAsync(

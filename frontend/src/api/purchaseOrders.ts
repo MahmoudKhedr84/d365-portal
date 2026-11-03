@@ -48,6 +48,9 @@ export const poLineSchema = z.object({
   color: z.string().nullable().optional(),
   style: z.string().nullable().optional(),
   version: z.string().nullable().optional(),
+  model: z.string().nullable().optional(),
+  type: z.string().nullable().optional(),
+  year: z.string().nullable().optional(),
 });
 export type PoLine = z.infer<typeof poLineSchema>;
 
@@ -122,6 +125,9 @@ export function toPoCreateBody(form: PoForm, lines: PrLineForm[]) {
         color: item ? blank(l.color) : null,
         style: item ? blank(l.style) : null,
         version: item ? blank(l.version) : null,
+        model: item ? blank(l.model) : null,
+        type: item ? blank(l.type) : null,
+        year: item ? blank(l.year) : null,
         salesTaxGroup: blank(l.salesTaxGroup),
         itemSalesTaxGroup: blank(l.itemSalesTaxGroup),
       };

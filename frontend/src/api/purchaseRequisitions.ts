@@ -45,6 +45,9 @@ export const prLineSchema = z.object({
   color: z.string().nullable().optional(),
   style: z.string().nullable().optional(),
   version: z.string().nullable().optional(),
+  model: z.string().nullable().optional(),
+  type: z.string().nullable().optional(),
+  year: z.string().nullable().optional(),
 });
 export type PrLine = z.infer<typeof prLineSchema>;
 
@@ -101,6 +104,9 @@ export const prLineFormSchema = z
     color: z.string().optional(),
     style: z.string().optional(),
     version: z.string().optional(),
+    model: z.string().optional(),
+    type: z.string().optional(),
+    year: z.string().optional(),
     onHold: z.boolean().optional(),
     salesTaxGroup: z.string().optional(),
     itemSalesTaxGroup: z.string().optional(),
@@ -180,6 +186,9 @@ export function toCreateBody(form: PrForm, lines: PrLineForm[]) {
       color: l.kind === 'item' ? blank(l.color) : null,
       style: l.kind === 'item' ? blank(l.style) : null,
       version: l.kind === 'item' ? blank(l.version) : null,
+      model: l.kind === 'item' ? blank(l.model) : null,
+      type: l.kind === 'item' ? blank(l.type) : null,
+      year: l.kind === 'item' ? blank(l.year) : null,
       salesTaxGroup: blank(l.salesTaxGroup),
       itemSalesTaxGroup: blank(l.itemSalesTaxGroup),
       lineNumber: l.lineNumber ?? null,
@@ -205,7 +214,7 @@ export function fromDetail(d: PrDetail): { form: PrForm; lines: PrLineForm[] } {
 
 /** Maps a saved line (requisition or purchase order) back to an editable line. */
 export function lineFromDetail(
-  l: Pick<PrLine, 'lineNumber' | 'itemNumber' | 'procurementCategory' | 'description' | 'productName' | 'quantity' | 'unit' | 'unitPrice' | 'site' | 'warehouse' | 'variant' | 'salesTaxGroup' | 'itemSalesTaxGroup' | 'configuration' | 'size' | 'color' | 'style' | 'version'> & { location?: string | null; inventoryStatus?: string | null },
+  l: Pick<PrLine, 'lineNumber' | 'itemNumber' | 'procurementCategory' | 'description' | 'productName' | 'quantity' | 'unit' | 'unitPrice' | 'site' | 'warehouse' | 'variant' | 'salesTaxGroup' | 'itemSalesTaxGroup' | 'configuration' | 'size' | 'color' | 'style' | 'version' | 'model' | 'type' | 'year'> & { location?: string | null; inventoryStatus?: string | null },
   currency?: string | null,
   vendor?: string | null,
 ): PrLineForm {
@@ -232,6 +241,9 @@ export function lineFromDetail(
     color: v(l.color),
     style: v(l.style),
     version: v(l.version),
+    model: v(l.model),
+    type: v(l.type),
+    year: v(l.year),
     salesTaxGroup: v(l.salesTaxGroup),
     itemSalesTaxGroup: v(l.itemSalesTaxGroup),
   };

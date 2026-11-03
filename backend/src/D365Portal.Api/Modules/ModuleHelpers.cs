@@ -44,7 +44,8 @@ public static class ModuleHelpers
 
     public static string? JoinVariant(JsonElement r)
     {
-        var parts = new[] { "ProductConfigurationId", "ProductSizeId", "ProductColorId", "ProductStyleId", "ProductVersionId" }
+        var parts = new[] { "ProductConfigurationId", "ProductSizeId", "ProductColorId", "ProductStyleId", "ProductVersionId",
+                "InventDimension1", "InventDimension2", "InventDimension3" }
             .Select(f => Str(r, f)).Where(v => !string.IsNullOrWhiteSpace(v)).ToList();
         return parts.Count == 0 ? null : string.Join(" / ", parts);
     }
