@@ -27,6 +27,11 @@ public static class PurchaseRequisitionEndpoints
             .AddEndpointFilter<ValidationFilter<CreatePrRequest>>()
             .WithSummary("Create a requisition in D365 (header, then all lines in one changeset) for the current company.");
 
+        g.MapPut("/{number}", (string number, CreatePrRequest req, PurchaseRequisitionService s, CancellationToken ct) =>
+                s.UpdateAsync(number, req, ct))
+            .AddEndpointFilter<ValidationFilter<CreatePrRequest>>()
+            .WithSummary("Change a Draft requisition: header and lines (update / add / remove) in one changeset.");
+
         return app;
     }
 }

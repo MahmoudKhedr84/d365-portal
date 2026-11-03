@@ -117,9 +117,11 @@ export function Shell({ onSignOut }: { onSignOut: () => void }) {
                 <Route path="/purchase-requisitions" element={<PurchaseRequisitionsPage />} />
                 <Route path="/purchase-requisitions/new" element={<PurchaseRequisitionCreatePage />} />
                 <Route path="/purchase-requisitions/:number" element={<PurchaseRequisitionDetailPage />} />
+                <Route path="/purchase-requisitions/:number/edit" element={<PurchaseRequisitionCreatePage key="pr-edit" />} />
                 <Route path="/purchase-orders" element={<PurchaseOrdersPage />} />
                 <Route path="/purchase-orders/new" element={<PurchaseOrderCreatePage />} />
                 <Route path="/purchase-orders/:number" element={<PurchaseOrderDetailPage />} />
+                <Route path="/purchase-orders/:number/edit" element={<PurchaseOrderCreatePage key="po-edit" />} />
                 <Route path="/cases" element={<CasesPage />} />
                 <Route path="/cases/new" element={<CaseCreatePage />} />
                 <Route path="/cases/:caseId" element={<CaseDetailPage />} />

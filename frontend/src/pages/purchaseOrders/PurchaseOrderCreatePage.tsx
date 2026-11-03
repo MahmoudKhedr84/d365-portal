@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Body1,
   Breadcrumb,
@@ -13,17 +13,19 @@ import {
   MessageBar,
   MessageBarBody,
   MessageBarTitle,
+  Spinner,
   Subtitle2,
   Title2,
   makeStyles,
   tokens,
 } from '@fluentui/react-components';
 import { Add20Regular, Send20Regular } from '@fluentui/react-icons';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useApi } from '@/api/ApiProvider';
 import { ApiError } from '@/api/client';
-import { createPurchaseOrder, poFormSchema, toPoCreateBody, type PoForm } from '@/api/purchaseOrders';
+import { PO_DIMENSIONS } from '@/api/itemDimensions';
+import { createPurchaseOrder, getPurchaseOrder, poFormSchema, poFromDetail, toPoCreateBody, updatePurchaseOrder, type PoForm } from '@/api/purchaseOrders';
 import { emptyLine, estimateTotals, prLineFormSchema, type PrLineForm } from '@/api/purchaseRequisitions';
 import { LookupCombobox } from '@/components/LookupCombobox';
 import { errorMessage, fieldErrors, useNotify } from '@/components/notify';
@@ -47,6 +49,7 @@ const useStyles = makeStyles({
   muted: { color: tokens.colorNeutralForeground3 },
 });
 
+/** Create a purchase order, or (route /purchase-orders/:number/edit) change a Draft one. */
 export function PurchaseOrderCreatePage() {
   const s = useStyles();
   const api = useApi();
@@ -55,6 +58,14 @@ export function PurchaseOrderCreatePage() {
   const navigate = useNavigate();
   const tenantId = useSessionStore((st) => st.tenantId);
   const company = useSessionStore((st) => st.company);
+  const { number: editNumber } = useParams();
+  const isEdit = !!editNumber;
+  const existing = useQuery({
+    queryKey: ['po', tenantId, company, 'detail', editNumber],
+    queryFn: () => getPurchaseOrder(api, editNumber!),
+    enabled: isEdit,
+  });
+  const [loaded, setLoaded] = useState(false);
 
   const [form, setForm] = useState<PoForm>({ vendor: '', currency: '', requestedDeliveryDate: '', accountingDate: '', site: '', warehouse: '', vendorReference: '', requester: '', salesTaxGroup: '', purchaseOrderNumber: '' });
   const [lines, setLines] = useState<PrLineForm[]>([emptyLine()]);
@@ -62,15 +73,27 @@ export function PurchaseOrderCreatePage() {
   const [lineErrors, setLineErrors] = useState<Record<string, string>[]>([]);
   const [serverError, setServerError] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (!isEdit || loaded || !existing.data) return;
+    const init = poFromDetail(existing.data);
+    setForm(init.form);
+    setLines(init.lines.length ? init.lines : [emptyLine()]);
+    setLoaded(true);
+  }, [isEdit, loaded, existing.data]);
+
   const set = <K extends keyof PoForm>(k: K, v: PoForm[K]) => setForm((f) => ({ ...f, [k]: v }));
   const setLine = (i: number, patch: Partial<PrLineForm>) => setLines((ls) => ls.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
 
   const create = useMutation({
-    mutationFn: () => createPurchaseOrder(api, toPoCreateBody(poFormSchema.parse(form), lines)),
+    mutationFn: () => {
+      const body = toPoCreateBody(poFormSchema.parse(form), lines);
+      return isEdit ? updatePurchaseOrder(api, editNumber!, body) : createPurchaseOrder(api, body);
+    },
     onSuccess: (po) => {
       qc.invalidateQueries({ queryKey: ['po'] });
       qc.setQueryData(['po', tenantId, company, 'detail', po.purchaseOrderNumber], po);
-      notify.success(`Purchase order ${po.purchaseOrderNumber} created`, `Company ${po.company}. Confirm or submit it for approval in D365.`);
+      if (isEdit) notify.success(`Purchase order ${po.purchaseOrderNumber} updated`, 'Changes were saved to D365.');
+      else notify.success(`Purchase order ${po.purchaseOrderNumber} created`, `Company ${po.company}. Confirm or submit it for approval in D365.`);
       navigate(`/purchase-orders/${encodeURIComponent(po.purchaseOrderNumber)}`);
     },
     onError: (e) => {
@@ -95,29 +118,63 @@ export function PurchaseOrderCreatePage() {
   };
 
   const total = estimateTotals(lines.map((l) => ({ ...l, currency: form.currency })))[0];
+  const backTo = isEdit ? `/purchase-orders/${encodeURIComponent(editNumber!)}` : '/purchase-orders';
+
+  if (isEdit && !loaded) {
+    return (
+      <div className={s.page}>
+        {existing.isError
+          ? <MessageBar intent="error"><MessageBarBody>{errorMessage(existing.error)}</MessageBarBody></MessageBar>
+          : <Spinner label="Loading purchase order from D365…" />}
+      </div>
+    );
+  }
+  if (isEdit && existing.data && !existing.data.canEdit) {
+    return (
+      <div className={s.page}>
+        <MessageBar intent="warning">
+          <MessageBarBody>
+            <MessageBarTitle>Purchase order {editNumber} can’t be changed</MessageBarTitle>
+            Its approval status is {existing.data.approvalStatus}. Only Draft purchase orders can be edited.
+          </MessageBarBody>
+        </MessageBar>
+        <div><Button onClick={() => navigate(backTo)}>Back</Button></div>
+      </div>
+    );
+  }
 
   return (
     <div className={s.page}>
       <Breadcrumb aria-label="Breadcrumb">
         <BreadcrumbItem><BreadcrumbButton onClick={() => navigate('/purchase-orders')}>Purchase orders</BreadcrumbButton></BreadcrumbItem>
         <BreadcrumbDivider />
-        <BreadcrumbItem><BreadcrumbButton current>New</BreadcrumbButton></BreadcrumbItem>
+        {isEdit && (
+          <>
+            <BreadcrumbItem><BreadcrumbButton onClick={() => navigate(backTo)}>{editNumber}</BreadcrumbButton></BreadcrumbItem>
+            <BreadcrumbDivider />
+          </>
+        )}
+        <BreadcrumbItem><BreadcrumbButton current>{isEdit ? 'Edit' : 'New'}</BreadcrumbButton></BreadcrumbItem>
       </Breadcrumb>
       <div>
-        <Title2 as="h1">New purchase order</Title2>
-        <Body1 className={s.muted}>Created in company <strong>{company}</strong>. D365 assigns the number and fills vendor defaults.</Body1>
+        <Title2 as="h1">{isEdit ? `Edit purchase order ${editNumber}` : 'New purchase order'}</Title2>
+        <Body1 className={s.muted}>
+          {isEdit
+            ? <>Draft — changes are saved to D365 in one step. The vendor can’t be changed; changing a line’s item replaces that line.</>
+            : <>Created in company <strong>{company}</strong>. D365 assigns the number and fills vendor defaults.</>}
+        </Body1>
       </div>
 
       {serverError && (
         <MessageBar intent="error">
-          <MessageBarBody><MessageBarTitle>D365 did not accept the purchase order</MessageBarTitle>{serverError}</MessageBarBody>
+          <MessageBarBody><MessageBarTitle>{isEdit ? 'D365 did not accept the changes' : 'D365 did not accept the purchase order'}</MessageBarTitle>{serverError}</MessageBarBody>
         </MessageBar>
       )}
 
       <Card className={s.card}>
         <Subtitle2 as="h2">Header</Subtitle2>
         <div className={s.grid}>
-          <LookupCombobox lookup="vendors" label="Vendor" required value={form.vendor || null} validationMessage={errors.vendor}
+          <LookupCombobox lookup="vendors" label="Vendor" required disabled={isEdit} value={form.vendor || null} validationMessage={errors.vendor}
             onChange={(id, v) => setForm((f) => ({
               ...f,
               vendor: id ?? '',
@@ -139,9 +196,11 @@ export function PurchaseOrderCreatePage() {
             onChange={(id) => set('requester', id ?? '')} />
           <LookupCombobox lookup="taxGroups" label="Sales tax group" value={form.salesTaxGroup || null} placeholder="Vendor default"
             onChange={(id) => set('salesTaxGroup', id ?? '')} />
-          <Field label="Purchase order number" hint="Leave empty unless numbering is manual" validationMessage={errors.purchaseOrderNumber}>
-            <Input value={form.purchaseOrderNumber} maxLength={20} onChange={(_, d) => set('purchaseOrderNumber', d.value)} />
-          </Field>
+          {!isEdit && (
+            <Field label="Purchase order number" hint="Leave empty unless numbering is manual" validationMessage={errors.purchaseOrderNumber}>
+              <Input value={form.purchaseOrderNumber} maxLength={20} onChange={(_, d) => set('purchaseOrderNumber', d.value)} />
+            </Field>
+          )}
           <LookupCombobox lookup="sites" label="Default site" value={form.site || null}
             onChange={(id) => setForm((f) => ({ ...f, site: id ?? '', warehouse: '' }))} />
           <LookupCombobox lookup="warehouses" label="Default warehouse" value={form.warehouse || null}
@@ -153,6 +212,7 @@ export function PurchaseOrderCreatePage() {
         <Subtitle2 as="h2">Lines</Subtitle2>
         {lines.map((l, i) => (
           <ProcurementLineEditor key={i} line={l} index={i} errors={lineErrors[i] ?? {}} showVendorAndCurrency={false}
+            dimensions={PO_DIMENSIONS} defaults={{ site: form.site, warehouse: form.warehouse }}
             onChange={(patch) => setLine(i, patch)} canRemove={lines.length > 1}
             onRemove={() => { setLines((ls) => ls.filter((_, idx) => idx !== i)); setLineErrors((le) => le.filter((_, idx) => idx !== i)); }} />
         ))}
@@ -166,9 +226,9 @@ export function PurchaseOrderCreatePage() {
 
       <div className={s.footer}>
         <Button appearance="primary" icon={<Send20Regular />} onClick={submit} disabled={create.isPending || !company}>
-          {create.isPending ? 'Creating in D365…' : 'Create purchase order'}
+          {create.isPending ? (isEdit ? 'Saving to D365…' : 'Creating in D365…') : (isEdit ? 'Save changes' : 'Create purchase order')}
         </Button>
-        <Button onClick={() => navigate('/purchase-orders')} disabled={create.isPending}>Cancel</Button>
+        <Button onClick={() => navigate(backTo)} disabled={create.isPending}>Cancel</Button>
       </div>
     </div>
   );

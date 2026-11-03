@@ -27,6 +27,11 @@ public static class PurchaseOrderEndpoints
             .AddEndpointFilter<ValidationFilter<CreatePoRequest>>()
             .WithSummary("Create a purchase order in the current company (header, then all lines in one changeset).");
 
+        g.MapPut("/{number}", (string number, CreatePoRequest req, PurchaseOrderService s, CancellationToken ct) =>
+                s.UpdateAsync(number, req, ct))
+            .AddEndpointFilter<ValidationFilter<CreatePoRequest>>()
+            .WithSummary("Change a Draft purchase order: header and lines (update / add / remove) in one changeset.");
+
         return app;
     }
 }

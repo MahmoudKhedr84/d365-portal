@@ -21,6 +21,7 @@ Multi-tenant web app for business users to create **Purchase requisitions, Purch
 | 6 | Cases → Quality management **CAPA cases** (no standard customer-service case entity is exposed) | Done |
 | 7 | General journals with running totals | Done |
 | 8 | Audit log viewer (tenant admin + super-admin), tests | Done |
+| 9 | Edit Draft requisitions / purchase orders; item storage dimensions (mandatory shown, others hidden) | Done — see `docs/draft-edit-and-storage-dimensions.md` |
 
 Per-step notes (entity/field names, what is unconfirmed, manual setup): `docs/step-*-summary.md`.
 

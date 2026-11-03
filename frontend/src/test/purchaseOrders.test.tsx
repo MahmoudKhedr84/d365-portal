@@ -42,6 +42,7 @@ function renderAt(path: string, handler: (c: Call) => unknown) {
               <Route path="/purchase-orders" element={<PurchaseOrdersPage />} />
               <Route path="/purchase-orders/new" element={<PurchaseOrderCreatePage />} />
               <Route path="/purchase-orders/:number" element={<PurchaseOrderDetailPage />} />
+              <Route path="/purchase-orders/:number/edit" element={<PurchaseOrderCreatePage />} />
             </Routes>
           </MemoryRouter>
         </ApiProvider>
@@ -144,5 +145,24 @@ describe('purchase orders', () => {
       vendor: 'V1', currency: 'EGP', lines: [{ itemNumber: 'A0001', unit: 'ea', quantity: 1 }],
     });
     expect(await screen.findByRole('heading', { name: 'PO-000007' })).toBeInTheDocument();
+  }, 20000);
+});
+
+describe('editing a draft purchase order', () => {
+  it('asks for a mandatory location, hides inventory status and keeps the vendor', async () => {
+    const draft: PoDetail = { ...detail, canEdit: true };
+    const calls = renderAt('/purchase-orders/PO-000007/edit', (c) => {
+      if (c.path.startsWith('/items/'))
+        return { itemNumber: 'SP-OL-0001', storageDimensionGroup: 'SiteWHLoc', mandatory: ['Site', 'Warehouse', 'Location'], source: 'group' };
+      if (c.path.startsWith('/lookups')) return [];
+      return draft;
+    });
+    const line = await screen.findByRole('group', { name: 'Line 1' });
+    expect(await within(line).findByRole('combobox', { name: /^Location/ })).toBeInTheDocument();
+    expect(within(line).queryByRole('combobox', { name: /^Inventory status/ })).toBeNull();
+    expect(screen.getByRole('combobox', { name: /^Vendor/ })).toBeDisabled();
+    await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    expect(await screen.findByText('Location is mandatory for this item.')).toBeInTheDocument();
+    expect(calls.some((c) => c.method === 'PUT')).toBe(false);
   }, 20000);
 });

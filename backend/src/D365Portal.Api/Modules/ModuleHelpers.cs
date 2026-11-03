@@ -1,6 +1,8 @@
 using System.Globalization;
 using System.Text.Json;
+using D365Portal.Api.Admin;
 using D365Portal.Core.D365;
+using D365Portal.Infrastructure.D365;
 
 namespace D365Portal.Api.Modules;
 
@@ -50,4 +52,38 @@ public static class ModuleHelpers
     /// <summary>Product dimension fields shared by procurement lines.</summary>
     public static readonly string[] ProductDimensionFields =
         { "ProductConfigurationId", "ProductSizeId", "ProductColorId", "ProductStyleId", "ProductVersionId" };
+
+    /// <summary>
+    /// Applies each item line's storage dimension rules: non-mandatory dimensions are cleared (no value is written),
+    /// and missing mandatory ones fail the whole request with 422 <c>dimension_required</c>. Category lines
+    /// (no item) keep what the user entered.
+    /// </summary>
+    public static async Task<IReadOnlyList<StorageDimensionValues>> ApplyStorageDimensionsAsync(
+        ItemDimensionResolver resolver, D365ConnectionSettings s, string company,
+        IReadOnlyList<(int Line, string? Item, StorageDimensionValues Values)> lines,
+        IReadOnlyCollection<StorageDimension> supported, CancellationToken ct)
+    {
+        var rules = await resolver.GetAsync(s, company, lines.Select(l => l.Item ?? string.Empty), ct);
+        var result = new List<StorageDimensionValues>(lines.Count);
+        var problems = new List<string>();
+        foreach (var (line, item, values) in lines)
+        {
+            if (string.IsNullOrWhiteSpace(item) || !rules.TryGetValue(item.Trim(), out var r))
+            {
+                result.Add(values);
+                continue;
+            }
+            var (kept, missing) = values.Apply(r, supported);
+            result.Add(kept);
+            if (missing.Count > 0)
+                problems.Add($"line {line} ({item.Trim()}): {string.Join(", ", missing.Select(StorageDimensionLabels.Label))}");
+        }
+        if (problems.Count > 0)
+            throw new AdminException(422, "dimension_required",
+                $"Mandatory storage dimensions are missing — {string.Join("; ", problems)}.");
+        return result;
+    }
+
+    /// <summary>OData key path for batch operations, e.g. PurchaseRequisitionLines(RequisitionNumber='1',RequisitionLineNumber=2).</summary>
+    public static string KeyPath(string set, IReadOnlyDictionary<string, object?> key) => set + ODataKey.Format(key);
 }

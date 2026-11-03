@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { ApiRequest } from './client';
-import type { PrLineForm } from './purchaseRequisitions';
+import { lineFromDetail, type PrLineForm } from './purchaseRequisitions';
 
 export const PO_STATUSES = ['Backorder', 'Received', 'Invoiced', 'Canceled'] as const;
 export const PO_APPROVALS = ['Draft', 'InReview', 'Approved', 'Rejected', 'Confirmed', 'Finalized'] as const;
@@ -41,6 +41,13 @@ export const poLineSchema = z.object({
   status: z.string().nullable(),
   salesTaxGroup: z.string().nullable().optional(),
   itemSalesTaxGroup: z.string().nullable().optional(),
+  location: z.string().nullable().optional(),
+  inventoryStatus: z.string().nullable().optional(),
+  configuration: z.string().nullable().optional(),
+  size: z.string().nullable().optional(),
+  color: z.string().nullable().optional(),
+  style: z.string().nullable().optional(),
+  version: z.string().nullable().optional(),
 });
 export type PoLine = z.infer<typeof poLineSchema>;
 
@@ -62,6 +69,8 @@ export const poDetailSchema = z.object({
   lines: z.array(poLineSchema),
   total: z.number(),
   d365Url: z.string(),
+  /** Only orders whose approval status is Draft can be changed. */
+  canEdit: z.boolean().optional(),
 });
 export type PoDetail = z.infer<typeof poDetailSchema>;
 
@@ -104,6 +113,9 @@ export function toPoCreateBody(form: PoForm, lines: PrLineForm[]) {
         unitPrice: l.unitPrice === '' || l.unitPrice === undefined ? null : Number(l.unitPrice),
         site: blank(l.site),
         warehouse: blank(l.warehouse),
+        location: item ? blank(l.location) : null,
+        inventoryStatus: item ? blank(l.inventoryStatus) : null,
+        lineNumber: l.lineNumber ?? null,
         requestedDeliveryDate: null,
         configuration: item ? blank(l.configuration) : null,
         size: item ? blank(l.size) : null,
@@ -114,6 +126,26 @@ export function toPoCreateBody(form: PoForm, lines: PrLineForm[]) {
         itemSalesTaxGroup: blank(l.itemSalesTaxGroup),
       };
     }),
+  };
+}
+
+/** Form state for editing an existing purchase order (approval status Draft). */
+export function poFromDetail(d: PoDetail): { form: PoForm; lines: PrLineForm[] } {
+  const v = (x?: string | null) => x ?? '';
+  return {
+    form: {
+      vendor: v(d.vendor),
+      currency: v(d.currency),
+      requestedDeliveryDate: v(d.requestedDeliveryDate),
+      accountingDate: v(d.accountingDate),
+      site: v(d.site),
+      warehouse: v(d.warehouse),
+      vendorReference: v(d.vendorReference),
+      requester: v(d.requester),
+      salesTaxGroup: v(d.salesTaxGroup),
+      purchaseOrderNumber: '',
+    },
+    lines: d.lines.map((l) => lineFromDetail({ ...l, productName: null }, d.currency, null)),
   };
 }
 
@@ -133,6 +165,10 @@ export async function listPurchaseOrders(
 
 export async function getPurchaseOrder(api: ApiRequest, number: string): Promise<PoDetail> {
   return poDetailSchema.parse(await api<unknown>(`/purchase-orders/${encodeURIComponent(number)}`));
+}
+
+export async function updatePurchaseOrder(api: ApiRequest, number: string, body: ReturnType<typeof toPoCreateBody>): Promise<PoDetail> {
+  return poDetailSchema.parse(await api<unknown>(`/purchase-orders/${encodeURIComponent(number)}`, { method: 'PUT', body }));
 }
 
 export async function createPurchaseOrder(api: ApiRequest, body: ReturnType<typeof toPoCreateBody>): Promise<PoDetail> {

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { ApiRequest } from './client';
+import { DIM_FIELD, DIM_LABEL, STORAGE_DIMENSIONS } from './itemDimensions';
 
 export const PR_STATUSES = ['Draft', 'InReview', 'Rejected', 'Approved', 'Cancelled', 'Closed'] as const;
 export const prStatusLabel = (s: string | null | undefined) => (s === 'InReview' ? 'In review' : (s ?? '—'));
@@ -39,6 +40,11 @@ export const prLineSchema = z.object({
   variant: z.string().nullable().optional(),
   salesTaxGroup: z.string().nullable().optional(),
   itemSalesTaxGroup: z.string().nullable().optional(),
+  configuration: z.string().nullable().optional(),
+  size: z.string().nullable().optional(),
+  color: z.string().nullable().optional(),
+  style: z.string().nullable().optional(),
+  version: z.string().nullable().optional(),
 });
 export type PrLine = z.infer<typeof prLineSchema>;
 
@@ -54,6 +60,8 @@ export const prDetailSchema = z.object({
   lines: z.array(prLineSchema),
   totals: z.array(z.object({ currency: z.string(), amount: z.number() })),
   d365Url: z.string(),
+  /** Only Draft requisitions can be changed. */
+  canEdit: z.boolean().optional(),
 });
 export type PrDetail = z.infer<typeof prDetailSchema>;
 
@@ -72,6 +80,18 @@ export const prLineFormSchema = z
     vendor: z.string().trim().optional(),
     site: z.string().trim().optional(),
     warehouse: z.string().trim().optional(),
+    /** Purchase orders only (requisition lines have no location / inventory status). */
+    location: z.string().trim().optional(),
+    inventoryStatus: z.string().trim().optional(),
+    /**
+     * Storage dimensions the item's storage dimension group makes mandatory (limited to what the screen supports).
+     * Set by the line editor once the item's rules load; other dimensions are hidden and left empty.
+     */
+    requiredDims: z.array(z.enum(STORAGE_DIMENSIONS)).optional(),
+    /** True while the item's dimension rules are loading. */
+    dimsLoading: z.boolean().optional(),
+    /** Edit only: the existing D365 line number. */
+    lineNumber: z.number().optional(),
     /** True when the item is a product master: a variant (product dimensions) must be chosen. */
     needsVariant: z.boolean().optional(),
     variant: z.string().trim().optional(),
@@ -90,6 +110,11 @@ export const prLineFormSchema = z
       ctx.addIssue({ code: 'custom', path: ['itemNumber'], message: 'This item is on hold for purchasing in this company.' });
     if (l.kind === 'item' && l.needsVariant && !l.variant)
       ctx.addIssue({ code: 'custom', path: ['variant'], message: 'Select the variant (product dimensions).' });
+    if (l.kind === 'item' && l.itemNumber && l.dimsLoading)
+      ctx.addIssue({ code: 'custom', path: ['itemNumber'], message: 'Loading the item’s storage dimensions…' });
+    if (l.kind === 'item')
+      for (const d of l.requiredDims ?? [])
+        if (!l[DIM_FIELD[d]]) ctx.addIssue({ code: 'custom', path: [DIM_FIELD[d]], message: `${DIM_LABEL[d]} is mandatory for this item.` });
     if (l.kind === 'category') {
       if (!l.procurementCategory) ctx.addIssue({ code: 'custom', path: ['procurementCategory'], message: 'Select a category.' });
       if (!l.description) ctx.addIssue({ code: 'custom', path: ['description'], message: 'Describe what you need.' });
@@ -154,7 +179,59 @@ export function toCreateBody(form: PrForm, lines: PrLineForm[]) {
       version: l.kind === 'item' ? blank(l.version) : null,
       salesTaxGroup: blank(l.salesTaxGroup),
       itemSalesTaxGroup: blank(l.itemSalesTaxGroup),
+      lineNumber: l.lineNumber ?? null,
     })),
+  };
+}
+
+/** Form state for editing an existing requisition (Draft only). */
+export function fromDetail(d: PrDetail): { form: PrForm; lines: PrLineForm[] } {
+  const v = (x?: string | null) => x ?? '';
+  return {
+    form: {
+      name: v(d.name),
+      purpose: d.purpose === 'Replenishment' ? 'Replenishment' : 'Consumption',
+      requester: '',
+      requestedDate: v(d.requestedDate),
+      accountingDate: v(d.accountingDate),
+      justification: v(d.justification),
+    },
+    lines: d.lines.map((l) => lineFromDetail(l, l.currency, l.vendor)),
+  };
+}
+
+/** Maps a saved line (requisition or purchase order) back to an editable line. */
+export function lineFromDetail(
+  l: Pick<PrLine, 'lineNumber' | 'itemNumber' | 'procurementCategory' | 'description' | 'productName' | 'quantity' | 'unit' | 'unitPrice' | 'site' | 'warehouse' | 'variant' | 'salesTaxGroup' | 'itemSalesTaxGroup' | 'configuration' | 'size' | 'color' | 'style' | 'version'> & { location?: string | null; inventoryStatus?: string | null },
+  currency?: string | null,
+  vendor?: string | null,
+): PrLineForm {
+  const v = (x?: string | null) => x ?? '';
+  const item = !!l.itemNumber;
+  return {
+    kind: item ? 'item' : 'category',
+    lineNumber: l.lineNumber,
+    itemNumber: v(l.itemNumber),
+    procurementCategory: v(l.procurementCategory),
+    description: v(l.description ?? l.productName),
+    quantity: l.quantity,
+    unit: v(l.unit),
+    unitPrice: l.unitPrice,
+    currency: v(currency),
+    vendor: v(vendor),
+    site: v(l.site),
+    warehouse: v(l.warehouse),
+    location: v(l.location),
+    inventoryStatus: v(l.inventoryStatus),
+    needsVariant: item && !!l.variant,
+    variant: v(l.variant),
+    configuration: v(l.configuration),
+    size: v(l.size),
+    color: v(l.color),
+    style: v(l.style),
+    version: v(l.version),
+    salesTaxGroup: v(l.salesTaxGroup),
+    itemSalesTaxGroup: v(l.itemSalesTaxGroup),
   };
 }
 
@@ -175,6 +252,14 @@ export async function listPurchaseRequisitions(
 
 export async function getPurchaseRequisition(api: ApiRequest, number: string): Promise<PrDetail> {
   return prDetailSchema.parse(await api<unknown>(`/purchase-requisitions/${encodeURIComponent(number)}`));
+}
+
+export async function updatePurchaseRequisition(
+  api: ApiRequest,
+  number: string,
+  body: ReturnType<typeof toCreateBody>,
+): Promise<PrDetail> {
+  return prDetailSchema.parse(await api<unknown>(`/purchase-requisitions/${encodeURIComponent(number)}`, { method: 'PUT', body }));
 }
 
 export async function createPurchaseRequisition(api: ApiRequest, body: ReturnType<typeof toCreateBody>): Promise<PrDetail> {

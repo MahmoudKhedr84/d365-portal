@@ -46,6 +46,7 @@ function renderAt(path: string, handler: (c: Call) => unknown) {
               <Route path="/purchase-requisitions" element={<PurchaseRequisitionsPage />} />
               <Route path="/purchase-requisitions/new" element={<PurchaseRequisitionCreatePage />} />
               <Route path="/purchase-requisitions/:number" element={<PurchaseRequisitionDetailPage />} />
+              <Route path="/purchase-requisitions/:number/edit" element={<PurchaseRequisitionCreatePage />} />
             </Routes>
           </MemoryRouter>
         </ApiProvider>
@@ -140,5 +141,51 @@ describe('purchase requisition pages', () => {
       lines: [{ itemNumber: 'A0001', description: 'Printer paper', unit: 'box', quantity: 1, style: 'Classic' }],
     });
     expect(await screen.findByRole('heading', { name: 'PR-000042' })).toBeInTheDocument();
+  }, 20000);
+});
+
+describe('editing a draft requisition with item storage dimensions', () => {
+  const draft: PrDetail = { ...detail, canEdit: true };
+
+  it('offers Edit only for drafts', async () => {
+    renderAt('/purchase-requisitions/PR-000042', () => draft);
+    expect(await screen.findByRole('button', { name: 'Edit' })).toBeInTheDocument();
+  });
+
+  it('shows only mandatory dimensions, clears the others and saves with PUT', async () => {
+    const calls = renderAt('/purchase-requisitions/PR-000042/edit', (c) => {
+      if (c.path.startsWith('/items/A0001/dimensions'))
+        return { itemNumber: 'A0001', storageDimensionGroup: 'SiteOnly', mandatory: ['Site'], source: 'group' };
+      if (c.path.startsWith('/lookups')) return [];
+      if (c.method === 'PUT') return draft;
+      return draft;
+    });
+    const line = await screen.findByRole('group', { name: 'Line 1' });
+    expect(await within(line).findByText(/Storage dimension group SiteOnly: Site mandatory/)).toBeInTheDocument();
+    expect(within(line).getByRole('combobox', { name: /^Site/ })).toBeInTheDocument();
+    expect(within(line).queryByRole('combobox', { name: /^Warehouse/ })).toBeNull();
+    expect(screen.getByRole('combobox', { name: /^Purpose/ })).toBeDisabled();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => expect(calls.some((c) => c.method === 'PUT')).toBe(true));
+    const put = calls.find((c) => c.method === 'PUT')!;
+    expect(put.path).toBe('/purchase-requisitions/PR-000042');
+    expect(put.body).toMatchObject({ name: 'Office supplies', lines: [{ lineNumber: 1, itemNumber: 'A0001', site: '1', warehouse: null }] });
+  }, 20000);
+
+  it('blocks saving when a mandatory dimension is empty', async () => {
+    const calls = renderAt('/purchase-requisitions/PR-000042/edit', (c) => {
+      if (c.path.startsWith('/items/'))
+        return { itemNumber: 'A0001', storageDimensionGroup: 'SiteWHLoc', mandatory: ['Site', 'Warehouse', 'Location'], source: 'group' };
+      if (c.path.startsWith('/lookups')) return [];
+      return { ...draft, lines: [{ ...draft.lines[0], warehouse: null }] };
+    });
+    const line = await screen.findByRole('group', { name: 'Line 1' });
+    expect(await within(line).findByRole('combobox', { name: /^Warehouse/ })).toBeInTheDocument();
+    // Requisition lines have no location field, so Location is not asked for.
+    expect(within(line).queryByRole('combobox', { name: /^Location/ })).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    expect(await screen.findByText('Warehouse is mandatory for this item.')).toBeInTheDocument();
+    expect(calls.some((c) => c.method === 'PUT')).toBe(false);
   }, 20000);
 });

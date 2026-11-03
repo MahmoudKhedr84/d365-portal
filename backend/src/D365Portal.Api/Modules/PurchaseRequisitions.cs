@@ -41,7 +41,12 @@ public sealed record PrLineDto(
     string? Status,
     string? Variant = null,
     string? SalesTaxGroup = null,
-    string? ItemSalesTaxGroup = null);
+    string? ItemSalesTaxGroup = null,
+    string? Configuration = null,
+    string? Size = null,
+    string? Color = null,
+    string? Style = null,
+    string? Version = null);
 
 public sealed record PrTotalDto(string Currency, decimal Amount);
 
@@ -56,7 +61,9 @@ public sealed record PrDetailDto(
     string? Justification,
     IReadOnlyList<PrLineDto> Lines,
     IReadOnlyList<PrTotalDto> Totals,
-    string D365Url);
+    string D365Url,
+    /// <summary>Only Draft requisitions can be changed from the portal.</summary>
+    bool CanEdit = false);
 
 public sealed record CreatePrLineRequest(
     string? ItemNumber,
@@ -76,7 +83,9 @@ public sealed record CreatePrLineRequest(
     string? Style = null,
     string? Version = null,
     string? SalesTaxGroup = null,
-    string? ItemSalesTaxGroup = null);
+    string? ItemSalesTaxGroup = null,
+    /// <summary>Edit only: the existing D365 line this row updates. Null = a new line.</summary>
+    int? LineNumber = null);
 
 /// <summary>
 /// The preparer is always the D365 worker linked to the integration user (D365 requires the
@@ -128,8 +137,13 @@ public sealed class PurchaseRequisitionService(
     ID365ODataClient odata,
     ITenantContext tenant,
     IAuditLogger audit,
-    Infrastructure.D365.LookupService lookups)
+    Infrastructure.D365.LookupService lookups,
+    Infrastructure.D365.ItemDimensionResolver dimensions)
 {
+    /// <summary>Storage dimensions PurchaseRequisitionLines can carry.</summary>
+    public static readonly Infrastructure.D365.StorageDimension[] SupportedDimensions =
+        { Infrastructure.D365.StorageDimension.Site, Infrastructure.D365.StorageDimension.Warehouse };
+
     public const string HeaderSet = "PurchaseRequisitionHeaders";
     public const string LineSet = "PurchaseRequisitionLines";
     private const string StatusEnum = "Microsoft.Dynamics.DataEntities.PurchReqRequisitionStatus";
@@ -200,6 +214,7 @@ public sealed class PurchaseRequisitionService(
         if (onHold.Count > 0)
             throw new AdminException(422, "item_on_hold",
                 $"These items are on hold for purchasing in {company}: {string.Join(", ", onHold.OrderBy(x => x))}. Remove them or ask to release the hold.");
+        var lines = await WithDimensionsAsync(s, company, req.Lines, ct);
 
         var header = Compact(new Dictionary<string, object?>
         {
@@ -214,7 +229,7 @@ public sealed class PurchaseRequisitionService(
         if (string.IsNullOrEmpty(number))
             throw new D365Exception("D365 did not return the new requisition number.", null, "d365_bad_response");
 
-        var ops = req.Lines.Select((l, i) => new BatchOperation(BatchMethod.Post, LineSet, LineBody(number, i + 1, company, req, l))).ToList();
+        var ops = lines.Select((l, i) => new BatchOperation(BatchMethod.Post, LineSet, LineBody(number, i + 1, company, req, l))).ToList();
         try
         {
             await odata.BatchAsync(s, ops, ct);
@@ -242,6 +257,137 @@ public sealed class PurchaseRequisitionService(
 
         return await LoadAsync(s, number, ct)
             ?? throw new D365Exception($"Requisition {number} was created but could not be read back.", null, "d365_bad_response");
+    }
+
+    /// <summary>
+    /// Changes a Draft requisition: the header (name, dates, justification) and its lines in one atomic changeset.
+    /// Lines with a <see cref="CreatePrLineRequest.LineNumber"/> are updated; existing lines left out are deleted;
+    /// lines without a number are added. Changing a line's item or category replaces that line (D365 does not
+    /// allow changing the item of an existing line).
+    /// </summary>
+    public async Task<PrDetailDto> UpdateAsync(string number, CreatePrRequest req, CancellationToken ct)
+    {
+        var s = await Settings(ct);
+        var company = tenant.Company
+            ?? throw new D365Exception("Select a company first.", null, D365ErrorCodes.NoCompany);
+        var current = await LoadAsync(s, number, ct)
+            ?? throw new AdminException(404, "not_found", $"Purchase requisition {number} was not found.");
+        if (!current.CanEdit)
+            throw new AdminException(409, "not_draft",
+                $"Requisition {number} is {current.Status}. Only Draft requisitions can be changed.");
+
+        var onHold = await lookups.GetPurchaseOnHoldAsync(s, company,
+            req.Lines.Where(l => IsNewOrReplaced(current, l)).Select(l => l.ItemNumber ?? string.Empty), ct);
+        if (onHold.Count > 0)
+            throw new AdminException(422, "item_on_hold",
+                $"These items are on hold for purchasing in {company}: {string.Join(", ", onHold.OrderBy(x => x))}. Remove them or ask to release the hold.");
+        var lines = await WithDimensionsAsync(s, company, req.Lines, ct);
+
+        var ops = new List<BatchOperation>
+        {
+            new(BatchMethod.Patch, KeyPath(HeaderSet, new Dictionary<string, object?> { ["RequisitionNumber"] = number }), Compact(new Dictionary<string, object?>
+            {
+                ["RequisitionName"] = req.Name.Trim(),
+                ["DefaultRequestedDate"] = ToODataDate(req.RequestedDate),
+                ["DefaultAccountingDate"] = ToODataDate(req.AccountingDate),
+                ["DefaultBusinessJustificationDetails"] = req.Justification?.Trim() ?? string.Empty,
+            })),
+        };
+
+        var existing = current.Lines.ToDictionary(l => l.LineNumber);
+        var kept = new HashSet<int>();
+        var patches = new List<BatchOperation>();
+        var posts = new List<CreatePrLineRequest>();
+        foreach (var l in lines)
+        {
+            if (l.LineNumber is { } n && existing.ContainsKey(n) && !IsNewOrReplaced(current, l))
+            {
+                kept.Add(n);
+                patches.Add(new BatchOperation(BatchMethod.Patch, LineKey(number, n), PatchBody(req, l)));
+            }
+            else posts.Add(l);
+        }
+        // Deletes first, so a replaced line's number is free before anything is added.
+        ops.AddRange(existing.Keys.Where(n => !kept.Contains(n)).OrderBy(n => n)
+            .Select(n => new BatchOperation(BatchMethod.Delete, LineKey(number, n))));
+        ops.AddRange(patches);
+        var next = existing.Count == 0 ? 1 : existing.Keys.Max() + 1;
+        ops.AddRange(posts.Select((l, i) => new BatchOperation(BatchMethod.Post, LineSet, LineBody(number, next + i, company, req, l))));
+
+        try
+        {
+            await odata.BatchAsync(s, ops, ct);
+        }
+        catch (D365Exception ex)
+        {
+            throw new D365Exception($"The requisition was not changed. {ex.Message}", ex.StatusCode, ex.Code, ex);
+        }
+
+        await audit.WriteAsync(new AuditLog
+        {
+            TenantId = tenant.TenantId,
+            UserId = tenant.UserId,
+            UserEmail = tenant.UserEmail,
+            Company = company,
+            Entity = "PurchaseRequisition",
+            Action = "Update",
+            RequestSummary = $"{number}: {req.Name}; {patches.Count} updated, {posts.Count} added, {existing.Count - kept.Count} removed",
+            Success = true,
+            StatusCode = 200,
+        }, ct);
+
+        return await LoadAsync(s, number, ct)
+            ?? throw new D365Exception($"Requisition {number} was changed but could not be read back.", null, "d365_bad_response");
+    }
+
+    /// <summary>True when the line is new, or its item/category differs from the existing line (→ replace).</summary>
+    private static bool IsNewOrReplaced(PrDetailDto current, CreatePrLineRequest l)
+    {
+        var old = l.LineNumber is { } n ? current.Lines.FirstOrDefault(x => x.LineNumber == n) : null;
+        if (old is null) return true;
+        return !string.Equals(Blank(old.ItemNumber), Blank(l.ItemNumber), StringComparison.OrdinalIgnoreCase)
+            || (string.IsNullOrWhiteSpace(l.ItemNumber) &&
+                !string.Equals(Blank(old.ProcurementCategory), Blank(l.ProcurementCategory), StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string LineKey(string number, int line) =>
+        KeyPath(LineSet, new Dictionary<string, object?> { ["RequisitionNumber"] = number, ["RequisitionLineNumber"] = line });
+
+    /// <summary>Editable line fields. Site/warehouse are always sent ("" clears them) so dimensions the item doesn't use stay empty.</summary>
+    internal static Dictionary<string, object?> PatchBody(CreatePrRequest req, CreatePrLineRequest l)
+    {
+        var isItem = !string.IsNullOrWhiteSpace(l.ItemNumber);
+        var body = Compact(new Dictionary<string, object?>
+        {
+            ["LineDescription"] = Blank(l.Description),
+            ["ProductName"] = isItem ? null : Blank(l.Description),
+            ["RequestedPurchaseQuantity"] = l.Quantity,
+            ["PurchaseUnitSymbol"] = Blank(l.Unit),
+            ["PurchasePrice"] = l.UnitPrice,
+            ["CurrencyCode"] = Blank(l.Currency)?.ToUpperInvariant(),
+            ["RequestedDate"] = ToODataDate(l.RequestedDate ?? req.RequestedDate),
+            ["ProductConfigurationId"] = isItem ? Blank(l.Configuration) : null,
+            ["ProductSizeId"] = isItem ? Blank(l.Size) : null,
+            ["ProductColorId"] = isItem ? Blank(l.Color) : null,
+            ["ProductStyleId"] = isItem ? Blank(l.Style) : null,
+            ["ProductVersionId"] = isItem ? Blank(l.Version) : null,
+        });
+        body["VendorAccountNumber"] = Blank(l.Vendor) ?? string.Empty;
+        body["ReceivingSiteId"] = Blank(l.Site) ?? string.Empty;
+        body["ReceivingWarehouseId"] = Blank(l.Warehouse) ?? string.Empty;
+        body["SalesTaxGroupCode"] = Blank(l.SalesTaxGroup) ?? string.Empty;
+        body["SalesTaxItemGroupCode"] = Blank(l.ItemSalesTaxGroup) ?? string.Empty;
+        return body;
+    }
+
+    /// <summary>Applies each item's storage dimension group: keeps only mandatory site/warehouse, fails if one is missing.</summary>
+    private async Task<IReadOnlyList<CreatePrLineRequest>> WithDimensionsAsync(
+        D365ConnectionSettings s, string company, IReadOnlyList<CreatePrLineRequest> lines, CancellationToken ct)
+    {
+        var applied = await ApplyStorageDimensionsAsync(dimensions, s, company,
+            lines.Select((l, i) => (i + 1, l.ItemNumber, new Infrastructure.D365.StorageDimensionValues(l.Site, l.Warehouse))).ToList(),
+            SupportedDimensions, ct);
+        return lines.Select((l, i) => l with { Site = applied[i].Site, Warehouse = applied[i].Warehouse }).ToList();
     }
 
     internal static Dictionary<string, object?> LineBody(string number, int lineNumber, string company, CreatePrRequest req, CreatePrLineRequest l)
@@ -292,7 +438,9 @@ public sealed class PurchaseRequisitionService(
             Num(r, "RequestedPurchaseQuantity"), Str(r, "PurchaseUnitSymbol"), Num(r, "PurchasePrice"), Num(r, "LineAmount"),
             Str(r, "CurrencyCode"), Str(r, "VendorAccountNumber"), Str(r, "ReceivingSiteId"), Str(r, "ReceivingWarehouseId"),
             Date(r, "RequestedDate"), Str(r, "LineStatus"),
-            JoinVariant(r), Str(r, "SalesTaxGroupCode"), Str(r, "SalesTaxItemGroupCode"))).ToList();
+            JoinVariant(r), Str(r, "SalesTaxGroupCode"), Str(r, "SalesTaxItemGroupCode"),
+            Str(r, "ProductConfigurationId"), Str(r, "ProductSizeId"), Str(r, "ProductColorId"), Str(r, "ProductStyleId"),
+            Str(r, "ProductVersionId"))).ToList();
         var totals = lineDtos.GroupBy(l => l.Currency ?? string.Empty)
             .Select(g => new PrTotalDto(g.Key, g.Sum(l => l.LineAmount))).ToList();
 
@@ -300,7 +448,8 @@ public sealed class PurchaseRequisitionService(
             Str(h, "RequisitionNumber") ?? number, Str(h, "RequisitionName"), Str(h, "RequisitionStatus"),
             Str(h, "RequisitionPurpose"), Str(h, "PreparerPersonnelNumber"), Date(h, "DefaultRequestedDate"),
             Date(h, "DefaultAccountingDate"), Str(h, "DefaultBusinessJustificationDetails"), lineDtos, totals,
-            DeepLink(s, tenant.Company, "PurchReqTableListPage"));
+            DeepLink(s, tenant.Company, "PurchReqTableListPage"),
+            string.Equals(Str(h, "RequisitionStatus"), "Draft", StringComparison.OrdinalIgnoreCase));
     }
 
 

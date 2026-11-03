@@ -63,6 +63,7 @@ public static class DependencyInjection
         services.AddScoped<ID365SettingsProvider, D365SettingsProvider>();
         services.AddScoped<ID365ODataClient, D365ODataClient>();
         services.AddScoped<LookupService>();
+        services.AddScoped<ItemDimensionResolver>();
 
         return services;
     }

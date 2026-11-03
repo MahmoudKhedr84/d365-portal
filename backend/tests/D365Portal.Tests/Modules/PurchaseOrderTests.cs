@@ -29,8 +29,9 @@ public class PurchaseOrderTests
         tenant.SetTenant(Guid.NewGuid(), Guid.NewGuid(), "u@contoso.com", UserRole.User);
         tenant.SetCompany(company);
         var audit = new ListAudit();
-        var lookups = new LookupService(odata, new MemoryCache(new MemoryCacheOptions()));
-        return (new PurchaseOrderService(new StaticSettings(), odata, tenant, audit, lookups), odata, audit);
+        var cache = new MemoryCache(new MemoryCacheOptions());
+        var lookups = new LookupService(odata, cache);
+        return (new PurchaseOrderService(new StaticSettings(), odata, tenant, audit, lookups, new ItemDimensionResolver(odata, cache)), odata, audit);
     }
 
     private static CreatePoRequest Request(params CreatePoLineRequest[] lines) =>
@@ -92,7 +93,8 @@ public class PurchaseOrderTests
         tenant.SetTenant(Guid.NewGuid(), Guid.NewGuid(), "u@contoso.com", UserRole.User);
         tenant.SetCompany("WFQ");
         var failing = new PurchaseOrderService(new StaticSettings(), new ThrowingPost(), tenant, new ListAudit(),
-            new LookupService(manual, new MemoryCache(new MemoryCacheOptions())));
+            new LookupService(manual, new MemoryCache(new MemoryCacheOptions())),
+            new ItemDimensionResolver(manual, new MemoryCache(new MemoryCacheOptions())));
         var line = new CreatePoLineRequest("A", null, null, 1, null, null, null, null, null);
         (await failing.Invoking(f => f.CreateAsync(Request(line), default)).Should().ThrowAsync<AdminException>())
             .Which.Code.Should().Be("po_number_required");

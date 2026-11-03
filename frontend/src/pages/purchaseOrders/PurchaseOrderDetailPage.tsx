@@ -22,7 +22,7 @@ import {
   makeStyles,
   tokens,
 } from '@fluentui/react-components';
-import { Open20Regular } from '@fluentui/react-icons';
+import { Edit20Regular, Open20Regular } from '@fluentui/react-icons';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useApi } from '@/api/ApiProvider';
@@ -78,6 +78,10 @@ export function PurchaseOrderDetailPage() {
         <Title2 as="h1">{d.purchaseOrderNumber}</Title2>
         <PoStatusBadges status={d.status} approval={d.approvalStatus} />
         <span className={s.spacer} />
+        {d.canEdit && (
+          <Button appearance="primary" icon={<Edit20Regular />}
+            onClick={() => navigate(`/purchase-orders/${encodeURIComponent(d.purchaseOrderNumber)}/edit`)}>Edit</Button>
+        )}
         <Button as="a" href={d.d365Url} target="_blank" rel="noopener noreferrer" icon={<Open20Regular />}>Open in D365</Button>
       </div>
 
@@ -108,7 +112,7 @@ export function PurchaseOrderDetailPage() {
                 <TableHeaderCell>Unit</TableHeaderCell>
                 <TableHeaderCell className={s.num}>Unit price</TableHeaderCell>
                 <TableHeaderCell className={s.num}>Amount</TableHeaderCell>
-                <TableHeaderCell>Site / WH</TableHeaderCell>
+                <TableHeaderCell>Site / WH / location / status</TableHeaderCell>
                 <TableHeaderCell>Tax group / item tax</TableHeaderCell>
               </TableRow>
             </TableHeader>
@@ -125,7 +129,7 @@ export function PurchaseOrderDetailPage() {
                   <TableCell>{l.unit}</TableCell>
                   <TableCell className={s.num}>{formatAmount(l.unitPrice)}</TableCell>
                   <TableCell className={s.num}>{formatAmount(l.lineAmount)}</TableCell>
-                  <TableCell className={s.mono}>{[l.site, l.warehouse].filter(Boolean).join(' / ')}</TableCell>
+                  <TableCell className={s.mono}>{[l.site, l.warehouse, l.location, l.inventoryStatus].filter(Boolean).join(' / ')}</TableCell>
                   <TableCell className={s.mono}>{[l.salesTaxGroup, l.itemSalesTaxGroup].filter(Boolean).join(' / ')}</TableCell>
                 </TableRow>
               ))}

@@ -21,7 +21,7 @@ import {
   makeStyles,
   tokens,
 } from '@fluentui/react-components';
-import { Open20Regular } from '@fluentui/react-icons';
+import { Edit20Regular, Open20Regular } from '@fluentui/react-icons';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useApi } from '@/api/ApiProvider';
@@ -81,6 +81,10 @@ export function PurchaseRequisitionDetailPage() {
         <Title2 as="h1">{d.requisitionNumber}</Title2>
         <PrStatusBadge status={d.status} />
         <span className={s.spacer} />
+        {d.canEdit && (
+          <Button appearance="primary" icon={<Edit20Regular />}
+            onClick={() => navigate(`/purchase-requisitions/${encodeURIComponent(d.requisitionNumber)}/edit`)}>Edit</Button>
+        )}
         <Button as="a" href={d.d365Url} target="_blank" rel="noopener noreferrer" icon={<Open20Regular />}>Open in D365</Button>
       </div>
 

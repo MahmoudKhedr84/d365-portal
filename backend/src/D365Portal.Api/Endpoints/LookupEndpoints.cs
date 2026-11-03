@@ -40,6 +40,18 @@ public static class LookupEndpoints
             })
             .WithSummary("Search a lookup (vendors, products, sites, warehouses, mainAccounts, …).");
 
+        // Storage dimensions an item needs on procurement lines (from its storage dimension group).
+        app.MapGet("/api/items/{itemNumber}/dimensions", async (string itemNumber, ITenantContext tenant,
+                ID365SettingsProvider settingsProvider, ItemDimensionResolver resolver, CancellationToken ct) =>
+            {
+                var company = tenant.Company ?? throw new D365Exception("Select a company first.", null, D365ErrorCodes.NoCompany);
+                var settings = await settingsProvider.GetAsync(tenant.TenantId!.Value, ct);
+                return Results.Ok(await resolver.GetOneAsync(settings, company, itemNumber.Trim(), ct));
+            })
+            .WithTags("Lookups")
+            .RequireAuthorization(Policies.TenantUser)
+            .WithSummary("Mandatory storage dimensions (site, warehouse, location, inventory status) for an item in the current company.");
+
         return app;
     }
 }

@@ -41,6 +41,10 @@ public static class LookupCatalog
         new("sites", "Sites", ["OperationalSites", "Sites"], ["SiteId"], ["SiteName", "Name"], true),
         new("warehouses", "Warehouses", ["Warehouses"], ["WarehouseId"], ["WarehouseName", "Name"], true,
             ["OperationalSiteId"], new Dictionary<string, string[]> { ["site"] = ["OperationalSiteId", "SiteId"] }),
+        // Storage dimensions below site/warehouse (shown only when the item's storage dimension group makes them mandatory).
+        new("warehouseLocations", "Warehouse locations", ["WarehouseLocations"], ["WarehouseLocationId"], ["LocationProfileId", "WarehouseLocationId"], true,
+            ["WarehouseId"], new Dictionary<string, string[]> { ["warehouse"] = ["WarehouseId"] }),
+        new("inventoryStatuses", "Inventory statuses", ["InventoryStatuses", "WarehouseInventoryStatuses"], ["StatusId", "InventoryStatusId"], ["StatusName", "Name"], true),
         new("mainAccounts", "Main accounts", ["MainAccounts"], ["MainAccountId"], ["Name"], false,
             ["MainAccountType", "ChartOfAccounts"]),
         new("financialDimensions", "Financial dimensions", ["FinancialDimensions", "DimensionAttributes"],
@@ -77,6 +81,8 @@ public static class LookupCatalog
         ("cases", "CAPA cases", new[] { "CAPACases" }, "CAPA"),
         ("ledgerJournalHeaders", "General journal headers", new[] { "LedgerJournalHeaders" }, "LedgerJournal"),
         ("ledgerJournalLines", "General journal lines", new[] { "LedgerJournalLines", "GeneralJournalLines" }, "LedgerJournal"),
+        // Item storage dimension rules (which of site / warehouse / location / inventory status are mandatory).
+        ("storageDimensionGroups", "Storage dimension groups", ItemDimensionResolver.GroupSets, "StorageDimension"),
     };
 
     /// <summary>Search keyword for suggestions when none of a lookup's candidates exist (e.g. "VendorsV3" → "Vendor").</summary>

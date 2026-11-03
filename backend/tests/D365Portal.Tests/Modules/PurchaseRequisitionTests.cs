@@ -33,8 +33,10 @@ public class PurchaseRequisitionTests : IClassFixture<ApiFactory>
         var tenant = new TenantContext();
         tenant.SetTenant(Guid.NewGuid(), Guid.NewGuid(), "u@contoso.com", UserRole.User);
         tenant.SetCompany("USMF");
-        var lookups = new LookupService(odata, new MemoryCache(new MemoryCacheOptions()));
-        return (new PurchaseRequisitionService(new FakeSettings(), odata, tenant, new NullAudit(), lookups), odata);
+        var cache = new MemoryCache(new MemoryCacheOptions());
+        var lookups = new LookupService(odata, cache);
+        return (new PurchaseRequisitionService(new FakeSettings(), odata, tenant, new NullAudit(), lookups,
+            new ItemDimensionResolver(odata, cache)), odata);
     }
 
     [Fact]
