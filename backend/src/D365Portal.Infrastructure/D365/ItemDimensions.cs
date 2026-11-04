@@ -33,7 +33,9 @@ public sealed record ItemDimensionRules(
 /// </remarks>
 public enum ProductDimension { Configuration, Size, Color, Style, Version, Model, Type, Year }
 
-public sealed record ProductDimensionOption(ProductDimension Dimension, IReadOnlyList<string> Values);
+/// <param name="Required">False when the per-product-master assignment can't be read (Model / Type / Year fallback to all
+/// values): the field is offered but optional, and D365 validates it on save.</param>
+public sealed record ProductDimensionOption(ProductDimension Dimension, IReadOnlyList<string> Values, bool Required = true);
 
 /// <summary>Line values for the product dimensions; <see cref="Apply"/> keeps the item's dimensions only and checks the values.</summary>
 public sealed record ProductDimensionValues(string? Configuration, string? Size, string? Color, string? Style, string? Version,
@@ -66,7 +68,7 @@ public sealed record ProductDimensionValues(string? Configuration, string? Size,
             var o = options.FirstOrDefault(x => x.Dimension == d);
             if (o is null) return null;
             var v = Get(d)?.Trim();
-            if (string.IsNullOrEmpty(v)) { problems.Add($"{d} is required"); return null; }
+            if (string.IsNullOrEmpty(v)) { if (o.Required) problems.Add($"{d} is required"); return null; }
             var match = o.Values.FirstOrDefault(x => string.Equals(x, v, StringComparison.OrdinalIgnoreCase));
             if (match is null && o.Values.Count > 0) { problems.Add($"{d} '{v}' is not assigned to this product"); return v; }
             return match ?? v;
@@ -185,7 +187,8 @@ public sealed class ItemDimensionResolver(ID365ODataClient odata, IMemoryCache c
 
     public async Task<ItemDimensionRules> GetOneAsync(D365ConnectionSettings s, string company, string item, CancellationToken ct)
     {
-        var key = $"itemdims:{s.EnvironmentUrl}:{company.ToLowerInvariant()}:{item.ToUpperInvariant()}";
+        // The tenant option changes the result, so it is part of the key.
+        var key = $"itemdims:{s.EnvironmentUrl}:{(s.ExtendedProductDimensions ? "ext" : "std")}:{company.ToLowerInvariant()}:{item.ToUpperInvariant()}";
         if (cache.TryGetValue<ItemDimensionRules>(key, out var hit) && hit is not null) return hit;
 
         var (group, productType, productNumber, isMaster) = await ReadItemAsync(s, company, item, ct);
@@ -268,8 +271,8 @@ public sealed class ItemDimensionResolver(ID365ODataClient odata, IMemoryCache c
         D365ConnectionSettings s, string company, string item, string productNumber, CancellationToken ct)
     {
         var result = new List<ProductDimensionOption>();
-        var sets = s.ExtendedProductDimensions ? ProductMasterSets.Concat(ExtendedProductMasterSets) : ProductMasterSets;
-        foreach (var (dim, set, field) in sets)
+        if (s.ExtendedProductDimensions) await AddExtendedDimensionsAsync(s, productNumber, result, ct);
+        foreach (var (dim, set, field) in ProductMasterSets)
         {
             try
             {
@@ -287,6 +290,60 @@ public sealed class ItemDimensionResolver(ID365ODataClient odata, IMemoryCache c
         }
         return result.OrderBy(o => (int)o.Dimension).ToList();
     }
+
+    /// <summary>All values of Model / Type / Year (public entities of the CTK value tables), used when the per-master entities don't exist.</summary>
+    public static readonly (ProductDimension Dim, string Set)[] ExtendedValueSets =
+    [
+        (ProductDimension.Model, "CTKEcoResModels"),
+        (ProductDimension.Type, "CTKEcoResTypes"),
+        (ProductDimension.Year, "CTKEcoResYears"),
+    ];
+
+    /// <summary>
+    /// Model / Type / Year: from the per-product-master entities when they exist (used + required, assigned values only);
+    /// otherwise every value from the value entities, offered as optional (D365 checks the assignment on save).
+    /// </summary>
+    private async Task AddExtendedDimensionsAsync(D365ConnectionSettings s, string productNumber, List<ProductDimensionOption> result, CancellationToken ct)
+    {
+        foreach (var (dim, set, field) in ExtendedProductMasterSets)
+        {
+            try
+            {
+                var page = await odata.GetAsync(s, set, new ODataQuery
+                {
+                    Filter = $"ProductMasterNumber eq {ODataFilter.Literal(productNumber)}",
+                    Select = ["ProductMasterNumber", field],
+                    Top = 500,
+                }, ct);
+                var values = Distinct(page.Rows, field);
+                if (values.Count > 0) result.Add(new ProductDimensionOption(dim, values));
+                continue;
+            }
+            catch (D365Exception ex) when (ex.StatusCode is 404 or 400) { /* per-master entity not deployed: fall back */ }
+
+            var all = await AllValuesAsync(s, ExtendedValueSets.First(x => x.Dim == dim).Set, ct);
+            if (all.Count > 0) result.Add(new ProductDimensionOption(dim, all, Required: false));
+        }
+    }
+
+    private async Task<IReadOnlyList<string>> AllValuesAsync(D365ConnectionSettings s, string set, CancellationToken ct)
+    {
+        var key = $"dimvalues:{s.EnvironmentUrl}:{set}";
+        if (cache.TryGetValue<IReadOnlyList<string>>(key, out var hit) && hit is not null) return hit;
+        IReadOnlyList<string> values;
+        try
+        {
+            var page = await odata.GetAsync(s, set, new ODataQuery { Select = ["Name"], Top = 2000 }, ct);
+            values = Distinct(page.Rows, "Name");
+        }
+        catch (D365Exception ex) when (ex.StatusCode is 404 or 400) { values = []; }
+        cache.Set(key, values, Ttl);
+        return values;
+    }
+
+    private static List<string> Distinct(IEnumerable<JsonElement> rows, string field) =>
+        rows.Select(r => Read(r, field)).Where(v => !string.IsNullOrWhiteSpace(v)).Select(v => v!)
+            .Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(v => v, StringComparer.OrdinalIgnoreCase).ToList();
 
     private async Task<(string? Group, string? ProductType, string? ProductNumber, bool IsMaster)> ReadItemAsync(
         D365ConnectionSettings s, string company, string item, CancellationToken ct)

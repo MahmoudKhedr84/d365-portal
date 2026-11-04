@@ -11,6 +11,8 @@ public sealed class RecordingOData : ID365ODataClient
     public Func<string, ODataQuery, string> Rows { get; set; } = (_, _) => "[]";
     public Func<string, string> Created { get; set; } = _ => "{}";
     public D365Exception? FailBatch { get; set; }
+    /// <summary>Entity sets that don't exist in the environment (GET throws 404).</summary>
+    public HashSet<string> Missing { get; } = new(StringComparer.OrdinalIgnoreCase);
 
     public List<(string Set, ODataQuery Query)> Gets { get; } = new();
     public List<(string Set, object Body)> Posts { get; } = new();
@@ -20,6 +22,7 @@ public sealed class RecordingOData : ID365ODataClient
     public Task<ODataPage> GetAsync(D365ConnectionSettings s, string entitySet, ODataQuery query, CancellationToken ct)
     {
         Gets.Add((entitySet, query));
+        if (Missing.Contains(entitySet)) throw new D365Exception($"Resource not found for the segment '{entitySet}'.", 404);
         var rows = JsonDocument.Parse(Rows(entitySet, query)).RootElement.EnumerateArray().Select(e => e.Clone()).ToList();
         return Task.FromResult(new ODataPage(rows, rows.Count));
     }

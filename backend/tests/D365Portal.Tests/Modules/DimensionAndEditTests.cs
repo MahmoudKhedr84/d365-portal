@@ -259,7 +259,38 @@ public class DimensionAndEditTests
         line.Should().NotContainKey("InventDimension1");
     }
 
-    // ---------------- purchase orders ----------------
+    [Fact]
+    public async Task Without_per_master_entities_model_type_year_are_optional_with_all_values()
+    {
+        var env = new Env { Extended = true };
+        var baseRows = env.OData.Rows;
+        env.OData.Missing.UnionWith(["CTKProductMasterModels", "CTKProductMasterTypes", "CTKProductMasterYears"]);
+        env.OData.Rows = (set, q) => set switch
+        {
+            "ReleasedProductsV2" => """[{"ItemNumber":"A1","StorageDimensionGroupName":"SiteWH","ProductType":"Item","ProductSubType":"ProductMaster","ProductNumber":"A1"}]""",
+            "CTKEcoResModels" => """[{"Name":"Corolla"},{"Name":"Camry"}]""",
+            "CTKEcoResYears" => """[{"Name":"2025"}]""",
+            _ => baseRows(set, q),
+        };
+        env.OData.Created = _ => """{"RequisitionNumber":"PR-1"}""";
+
+        var cache = new MemoryCache(new MemoryCacheOptions());
+        var rules = await new ItemDimensionResolver(env.OData, cache)
+            .GetOneAsync(await new StaticSettings(true).GetAsync(Guid.NewGuid(), default), "USMF", "A1", default);
+        rules.ProductDimensions.Should().BeEquivalentTo(new[]
+        {
+            new ProductDimensionOption(ProductDimension.Model, ["Camry", "Corolla"], Required: false),
+            new ProductDimensionOption(ProductDimension.Year, ["2025"], Required: false),
+        });
+
+        // Optional: saving without them works; a chosen value is sent.
+        await env.Pr().CreateAsync(PrReq(PrLine("A1", "1", "11") with { Model = "Camry" }), default);
+        var line = (Dictionary<string, object?>)env.OData.Batches.First()[0].Body!;
+        line["InventDimension1"].Should().Be("Camry");
+        line.Should().NotContainKey("InventDimension3");
+    }
+
+        // ---------------- purchase orders ----------------
 
     private static CreatePoRequest PoReq(params CreatePoLineRequest[] lines) =>
         new("V1", null, null, null, "1", "11", "REF", null, lines);

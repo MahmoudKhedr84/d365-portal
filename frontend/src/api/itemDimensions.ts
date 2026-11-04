@@ -48,7 +48,12 @@ export const itemDimensionRulesSchema = z.object({
   source: z.string(),
   /** Product dimensions the item uses, with the values assigned to its product master. */
   productDimensions: z
-    .array(z.object({ dimension: z.enum(PRODUCT_DIMENSIONS), values: z.array(z.string()) }))
+    .array(z.object({
+      dimension: z.enum(PRODUCT_DIMENSIONS),
+      values: z.array(z.string()),
+      /** False: Model / Type / Year offered with all values because the per-product assignment isn't readable. */
+      required: z.boolean().optional().default(true),
+    }))
     .nullish()
     .transform((v) => v ?? []),
 });

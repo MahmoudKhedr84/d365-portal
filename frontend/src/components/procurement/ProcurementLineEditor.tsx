@@ -75,7 +75,8 @@ export function ProcurementLineEditor({
   const required = rules.data ? dimensions.filter((d) => rules.data.mandatory.includes(d)) : undefined;
   // Product dimensions the item's product master uses (e.g. Style only), with the values assigned to it.
   const productOptions = rules.data?.productDimensions ?? [];
-  const requiredProduct: ProductDim[] | undefined = rules.data ? productOptions.map((o) => o.dimension) : undefined;
+  const requiredProduct: ProductDim[] | undefined = rules.data ? productOptions.filter((o) => o.required).map((o) => o.dimension) : undefined;
+  const offeredProduct = productOptions.map((o) => o.dimension);
 
   useEffect(() => {
     if (!item) return;
@@ -87,9 +88,9 @@ export function ProcurementLineEditor({
     for (const d of dimensions) if (!required.includes(d)) patch[DIM_FIELD[d]] = '';
     // Product master: keep only the dimensions it uses; pick the value when there is just one.
     if (requiredProduct.length > 0) {
-      for (const d of PRODUCT_DIMENSIONS) if (!requiredProduct.includes(d)) patch[PRODUCT_DIM_FIELD[d]] = '';
+      for (const d of PRODUCT_DIMENSIONS) if (!offeredProduct.includes(d)) patch[PRODUCT_DIM_FIELD[d]] = '';
       for (const o of productOptions)
-        if (o.values.length === 1 && !l[PRODUCT_DIM_FIELD[o.dimension]]) patch[PRODUCT_DIM_FIELD[o.dimension]] = o.values[0];
+        if (o.required && o.values.length === 1 && !l[PRODUCT_DIM_FIELD[o.dimension]]) patch[PRODUCT_DIM_FIELD[o.dimension]] = o.values[0];
     }
     if (required.includes('Site') && !l.site && defaults?.site) patch.site = defaults.site;
     if (required.includes('Warehouse') && !l.warehouse && defaults?.warehouse && (!defaults.site || (patch.site ?? l.site) === defaults.site))
@@ -161,12 +162,13 @@ export function ProcurementLineEditor({
           <LookupCombobox lookup="procurementCategories" label="Procurement category" required value={l.procurementCategory || null}
             validationMessage={le.procurementCategory} onChange={(id) => onChange({ procurementCategory: id ?? '' })} />
         )}
-        {l.kind === 'item' && item && productOptions.map(({ dimension: d, values }) => {
+        {l.kind === 'item' && item && productOptions.map(({ dimension: d, values, required: isRequired }) => {
           const field = PRODUCT_DIM_FIELD[d];
           const value = l[field] ?? '';
           return (
-            <Field key={`${item}-${d}`} label={d} required validationMessage={le[field]}>
-              <Dropdown placeholder={`Select ${d.toLowerCase()}`} value={value} selectedOptions={value ? [value] : []}
+            <Field key={`${item}-${d}`} label={d} required={isRequired} validationMessage={le[field]}
+              hint={isRequired ? undefined : 'Only if this item uses it (D365 checks on save)'}>
+              <Dropdown placeholder={`Select ${d.toLowerCase()}`} value={value} selectedOptions={value ? [value] : []} clearable={!isRequired}
                 onOptionSelect={(_, o) => onChange({ [field]: o.optionValue ?? '', variant: '' })}>
                 {values.map((v) => <Option key={v} value={v}>{v}</Option>)}
               </Dropdown>
